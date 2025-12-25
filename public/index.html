@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="theme-color" content="#1C1C1E" />
+        <title>GymLog</title>
+        <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+        <link rel="stylesheet" href="/styles.css" />
+    </head>
+    <body>
+        <div class="app">
+            <!-- Main Content -->
+            <main id="content" class="content">
+                <div class="loading">Loading...</div>
+            </main>
+
+            <!-- Bottom Navigation -->
+            <nav class="navbar">
+                <a
+                    class="nav-item"
+                    data-page="home"
+                    href="/"
+                    hx-get="/pages/home"
+                    hx-target="#content"
+                    hx-swap="innerHTML transition:true"
+                    hx-push-url="/"
+                >
+                    <svg
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <path
+                            d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
+                        ></path>
+                        <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                    </svg>
+                    <span>Home</span>
+                </a>
+                <a
+                    class="nav-item"
+                    data-page="workouts"
+                    href="/workouts"
+                    hx-get="/pages/workouts"
+                    hx-target="#content"
+                    hx-swap="innerHTML transition:true"
+                    hx-push-url="/workouts"
+                >
+                    <svg
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                    <span>Workouts</span>
+                </a>
+                <a
+                    class="nav-item"
+                    data-page="stats"
+                    href="/stats"
+                    hx-get="/pages/stats"
+                    hx-target="#content"
+                    hx-swap="innerHTML transition:true"
+                    hx-push-url="/stats"
+                >
+                    <svg
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <line x1="18" y1="20" x2="18" y2="10"></line>
+                        <line x1="12" y1="20" x2="12" y2="4"></line>
+                        <line x1="6" y1="20" x2="6" y2="14"></line>
+                    </svg>
+                    <span>Stats</span>
+                </a>
+                <a
+                    class="nav-item"
+                    data-page="account"
+                    href="/account"
+                    hx-get="/pages/account"
+                    hx-target="#content"
+                    hx-swap="innerHTML transition:true"
+                    hx-push-url="/account"
+                >
+                    <svg
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <path
+                            d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
+                        ></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    <span>Account</span>
+                </a>
+            </nav>
+        </div>
+
+        <script>
+            // Route mapping for static routes
+            const routes = {
+                "/": { page: "home", endpoint: "/pages/home" },
+                "/workouts": { page: "workouts", endpoint: "/pages/workouts" },
+                "/stats": { page: "stats", endpoint: "/pages/stats" },
+                "/account": { page: "account", endpoint: "/pages/account" },
+            };
+
+            // Handle initial page load based on URL
+            function loadCurrentRoute() {
+                const path = window.location.pathname;
+                let route = routes[path];
+                let endpoint = route?.endpoint;
+
+                // Handle dynamic routes
+                if (!route) {
+                    // /workouts/:id/active
+                    const activeMatch = path.match(
+                        /^\/workouts\/(\d+)\/active$/,
+                    );
+                    if (activeMatch) {
+                        route = { page: "workouts" };
+                        endpoint = `/pages/workouts/${activeMatch[1]}/active`;
+                    }
+                    // /workouts/:id (view/edit)
+                    const viewMatch = path.match(/^\/workouts\/(\d+)$/);
+                    if (viewMatch) {
+                        route = { page: "workouts" };
+                        endpoint = `/pages/workouts/${viewMatch[1]}`;
+                    }
+                    // /workouts/new
+                    if (path === "/workouts/new") {
+                        route = { page: "workouts" };
+                        endpoint = "/pages/workouts/new";
+                    }
+                }
+
+                // Default to home
+                if (!route) {
+                    route = routes["/"];
+                    endpoint = route.endpoint;
+                }
+
+                // Set active nav item
+                document.querySelectorAll(".nav-item").forEach((item) => {
+                    item.classList.toggle(
+                        "active",
+                        item.dataset.page === route.page,
+                    );
+                });
+
+                // Load content
+                htmx.ajax("GET", endpoint, {
+                    target: "#content",
+                    swap: "innerHTML transition:true",
+                });
+            }
+
+            // Handle nav clicks - update active state
+            document.querySelectorAll(".nav-item").forEach((item) => {
+                item.addEventListener("click", function (e) {
+                    document
+                        .querySelectorAll(".nav-item")
+                        .forEach((i) => i.classList.remove("active"));
+                    this.classList.add("active");
+                });
+            });
+
+            // Handle browser back/forward
+            window.addEventListener("popstate", loadCurrentRoute);
+
+            // Handle HTMX events for loading states
+            document.body.addEventListener("htmx:beforeRequest", function (e) {
+                if (
+                    e.target.id === "content" ||
+                    e.target.closest(".nav-item")
+                ) {
+                    document
+                        .getElementById("content")
+                        .classList.add("loading-state");
+                }
+            });
+
+            document.body.addEventListener("htmx:afterSwap", function (e) {
+                document
+                    .getElementById("content")
+                    .classList.remove("loading-state");
+            });
+
+            // Load initial route
+            loadCurrentRoute();
+        </script>
+    </body>
+</html>
