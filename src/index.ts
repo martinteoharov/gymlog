@@ -5,6 +5,29 @@ import { db } from "./db";
 
 const app = new Hono();
 
+// Weight conversion constants
+const KG_TO_LBS = 2.20462;
+
+// Convert kg to lbs for display
+function kgToLbs(kg: number): number {
+  return Math.round(kg * KG_TO_LBS * 10) / 10; // Round to 1 decimal
+}
+
+// Convert lbs to kg for storage
+function lbsToKg(lbs: number): number {
+  return Math.round((lbs / KG_TO_LBS) * 100) / 100; // Round to 2 decimals
+}
+
+// Convert weight for display based on user preference
+function displayWeight(kg: number, units: string): number {
+  return units === "lbs" ? kgToLbs(kg) : kg;
+}
+
+// Convert weight for storage (from user input to kg)
+function storageWeight(value: number, units: string): number {
+  return units === "lbs" ? lbsToKg(value) : value;
+}
+
 // Session duration: 30 days
 const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -149,8 +172,11 @@ app.get("/pages/home", (c) => {
   const user = requireAuthApi(c);
   if (!user) return c.html(`<script>window.location.href='/login';</script>`);
 
+  // Use client-provided day of week if available (for timezone accuracy)
+  const clientDow = c.req.query("dow");
   const today = new Date();
-  const dayOfWeek = getDayOfWeek(today);
+  const dayOfWeek =
+    clientDow !== undefined ? parseInt(clientDow, 10) : getDayOfWeek(today);
 
   // Get scheduled workout for today
   const todaySchedule = db
@@ -331,8 +357,11 @@ app.get("/pages/workouts", (c) => {
   const user = requireAuthApi(c);
   if (!user) return c.html(`<script>window.location.href='/login';</script>`);
 
+  // Use client-provided day of week if available (for timezone accuracy)
+  const clientDow = c.req.query("dow");
   const today = new Date();
-  const dayOfWeek = getDayOfWeek(today);
+  const dayOfWeek =
+    clientDow !== undefined ? parseInt(clientDow, 10) : getDayOfWeek(today);
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   // Get full week schedule
@@ -603,7 +632,7 @@ app.get("/pages/workouts/new", (c) => {
   return c.html(`
     <div class="page">
       <div class="page-header">
-        <button class="back-btn" hx-get="/pages/workouts" hx-target="#content" hx-swap="innerHTML transition:true">
+        <button class="back-btn" onclick="history.back()">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="15 18 9 12 15 6"></polyline>
           </svg>
@@ -611,7 +640,7 @@ app.get("/pages/workouts/new", (c) => {
         <h1 class="page-title">New Template</h1>
       </div>
 
-      <form hx-post="/api/templates" hx-target="#content" hx-swap="innerHTML transition:true">
+      <form hx-post="/api/templates" hx-target="#content" hx-swap="innerHTML transition:true" hx-push-url="/workouts">
         <div class="form-group">
           <label class="form-label">Template Name</label>
           <input type="text" name="name" class="form-input" placeholder="e.g., Push Day" required>
@@ -711,6 +740,7 @@ app.get("/pages/workouts/new", (c) => {
         let draggedIndex = null;
         let restTimeSeconds = 180;
         const weightUnit = '${units}';
+        const defaultWeight = ${units === "lbs" ? "45" : "20"};
 
         function formatRestTime(seconds) {
           const mins = Math.floor(seconds / 60);
@@ -747,9 +777,9 @@ app.get("/pages/workouts/new", (c) => {
             muscle,
             increment: 2.5,
             sets: [
-              { reps: 10, weight: 20 },
-              { reps: 10, weight: 20 },
-              { reps: 10, weight: 20 }
+              { reps: 10, weight: defaultWeight },
+              { reps: 10, weight: defaultWeight },
+              { reps: 10, weight: defaultWeight }
             ]
           });
           updateExerciseList();
@@ -772,7 +802,7 @@ app.get("/pages/workouts/new", (c) => {
         window.addSet = function(exerciseId) {
           const ex = selectedExercises.find(e => e.id === exerciseId);
           if (ex) {
-            const lastSet = ex.sets[ex.sets.length - 1] || { reps: 10, weight: 20 };
+            const lastSet = ex.sets[ex.sets.length - 1] || { reps: 10, weight: defaultWeight };
             ex.sets.push({ reps: lastSet.reps, weight: lastSet.weight });
             updateExerciseList();
           }
@@ -964,21 +994,30 @@ app.get("/pages/workouts/:id", (c) => {
     {} as Record<string, Exercise[]>,
   );
 
-  // Prepare exercises data for JavaScript
+  // Prepare exercises data for JavaScript (convert weights for display)
   const exercisesJson = JSON.stringify(
-    exercises.map((ex) => ({
-      id: ex.exercise_id,
-      name: ex.exercise_name,
-      muscle: ex.muscle_group,
-      increment: ex.increment || 2.5,
-      sets: JSON.parse(ex.sets_data || "[]"),
-    })),
+    exercises.map((ex) => {
+      const rawSets = JSON.parse(ex.sets_data || "[]") as {
+        reps: number;
+        weight: number;
+      }[];
+      return {
+        id: ex.exercise_id,
+        name: ex.exercise_name,
+        muscle: ex.muscle_group,
+        increment: ex.increment || 2.5,
+        sets: rawSets.map((s) => ({
+          reps: s.reps,
+          weight: displayWeight(s.weight, units),
+        })),
+      };
+    }),
   );
 
   return c.html(`
     <div class="page">
       <div class="page-header">
-        <button class="back-btn" hx-get="/pages/workouts" hx-target="#content" hx-swap="innerHTML transition:true">
+        <button class="back-btn" onclick="history.back()">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="15 18 9 12 15 6"></polyline>
           </svg>
@@ -986,7 +1025,7 @@ app.get("/pages/workouts/:id", (c) => {
         <h1 class="page-title">${template.name}</h1>
       </div>
 
-      <form id="edit-template-form" hx-put="/api/templates/${id}" hx-target="#content" hx-swap="innerHTML transition:true">
+      <form id="edit-template-form" hx-put="/api/templates/${id}" hx-target="#content" hx-swap="innerHTML transition:true" hx-push-url="/workouts">
         <div class="form-group">
           <label class="form-label">Template Name</label>
           <input type="text" name="name" class="form-input" value="${template.name}" required>
@@ -1034,14 +1073,6 @@ app.get("/pages/workouts/:id", (c) => {
           Save Changes
         </button>
       </form>
-
-      <button class="btn btn-primary btn-full" style="margin-top: 12px;"
-              hx-get="/pages/workouts/${template.id}/active"
-              hx-target="#content"
-              hx-swap="innerHTML transition:true"
-              hx-push-url="/workouts/${template.id}/active">
-        Start Workout
-      </button>
 
       <button class="btn btn-danger btn-full" style="margin-top: 12px;"
               hx-delete="/api/templates/${template.id}"
@@ -1102,6 +1133,7 @@ app.get("/pages/workouts/:id", (c) => {
         let draggedIndex = null;
         let restTimeSeconds = ${template.rest_time || 180};
         const weightUnit = '${units}';
+        const defaultWeight = ${units === "lbs" ? "45" : "20"};
 
         function formatRestTime(seconds) {
           const mins = Math.floor(seconds / 60);
@@ -1138,9 +1170,9 @@ app.get("/pages/workouts/:id", (c) => {
             muscle,
             increment: 2.5,
             sets: [
-              { reps: 10, weight: 20 },
-              { reps: 10, weight: 20 },
-              { reps: 10, weight: 20 }
+              { reps: 10, weight: defaultWeight },
+              { reps: 10, weight: defaultWeight },
+              { reps: 10, weight: defaultWeight }
             ]
           });
           updateExerciseList();
@@ -1163,7 +1195,7 @@ app.get("/pages/workouts/:id", (c) => {
         window.addSet = function(exerciseId) {
           const ex = selectedExercises.find(e => e.id === exerciseId);
           if (ex) {
-            const lastSet = ex.sets[ex.sets.length - 1] || { reps: 10, weight: 20 };
+            const lastSet = ex.sets[ex.sets.length - 1] || { reps: 10, weight: defaultWeight };
             ex.sets.push({ reps: lastSet.reps, weight: lastSet.weight });
             updateExerciseList();
           }
@@ -1351,11 +1383,10 @@ app.get("/pages/workouts/:id/active", (c) => {
     } | null;
 
     let lastSets: { weight: number; reps: number; completed: boolean }[] = [];
-    let allSetsCompleted = false;
 
     if (lastWorkout) {
       // Get all sets from that workout for this exercise
-      lastSets = db
+      const rawLastSets = db
         .query(
           `
         SELECT weight, reps FROM sets
@@ -1369,19 +1400,11 @@ app.get("/pages/workouts/:id/active", (c) => {
         completed: boolean;
       }[];
 
-      // Parse the template sets to check if all were completed
-      const templateSets = JSON.parse(ex.sets_data || "[]") as {
-        reps: number;
-        weight: number;
-      }[];
-
-      // Check if user completed all sets with all reps
-      allSetsCompleted =
-        lastSets.length >= templateSets.length &&
-        lastSets.every((set, i) => {
-          const targetReps = templateSets[i]?.reps || 0;
-          return set.reps >= targetReps;
-        });
+      // Convert weights for display
+      lastSets = rawLastSets.map((s) => ({
+        ...s,
+        weight: displayWeight(s.weight, units),
+      }));
     }
 
     // Parse the sets_data JSON
@@ -1390,18 +1413,27 @@ app.get("/pages/workouts/:id/active", (c) => {
       weight: number;
     }[];
 
-    // Apply auto-increment if all sets were completed in last workout
+    // Apply auto-increment per set if that set was completed with target reps last time
+    // Then convert weights for display based on user preference
     const increment = ex.increment || 2.5;
-    const adjustedSets = templateSets.map((set) => ({
-      reps: set.reps,
-      weight: allSetsCompleted ? set.weight + increment : set.weight,
-    }));
+    const adjustedSets = templateSets.map((set, i) => {
+      const lastSet = lastSets[i];
+      const targetReps = set.reps;
+      // Add increment if this specific set was completed with target reps
+      const setCompleted = lastSet && lastSet.reps >= targetReps;
+      return {
+        reps: set.reps,
+        weight: displayWeight(
+          setCompleted ? set.weight + increment : set.weight,
+          units,
+        ),
+      };
+    });
 
     return {
       ...ex,
       lastSets,
       templateSets: adjustedSets,
-      allSetsCompleted,
       increment,
     };
   });
@@ -1450,7 +1482,7 @@ app.get("/pages/workouts/:id/active", (c) => {
               ${
                 ex.lastSets.length > 0
                   ? `
-                <div class="card-subtitle">Last: ${ex.lastSets.map((s) => `${s.reps} × ${s.weight}kg`).join(", ")}</div>
+                <div class="card-subtitle">Last: ${ex.lastSets.map((s) => `${s.reps} × ${s.weight}${units}`).join(", ")}</div>
               `
                   : ""
               }
@@ -1474,7 +1506,7 @@ app.get("/pages/workouts/:id/active", (c) => {
                              value="${ex.lastSets[setIndex]?.weight || set.weight}" step="2.5" onfocus="this.select()" oninput="saveProgress()">
                       <button type="button" class="spinner-btn" onclick="adjustInput(this, 2.5)">+</button>
                     </div>
-                    <span class="set-unit">kg</span>
+                    <span class="set-unit">${units}</span>
                     <button type="button" class="set-check" onclick="toggleSetComplete(this)"></button>
                   </div>
                 `,
@@ -1533,6 +1565,8 @@ app.get("/pages/workouts/:id/active", (c) => {
         const templateId = ${templateId};
         let exercisesData = ${exercisesJson};
         const REST_TIME = ${restTime};
+        const weightUnit = '${units}';
+        const defaultWeight = ${units === "lbs" ? "45" : "20"};
         let setCounters = {};
 
         // All exercises for modal
@@ -1736,7 +1770,7 @@ app.get("/pages/workouts/:id/active", (c) => {
             exercise_id: id,
             exercise_name: name,
             lastSets: [],
-            templateSets: [{ reps: 10, weight: 20 }, { reps: 10, weight: 20 }, { reps: 10, weight: 20 }]
+            templateSets: [{ reps: 10, weight: defaultWeight }, { reps: 10, weight: defaultWeight }, { reps: 10, weight: defaultWeight }]
           };
           exercisesData.push(newEx);
           setCounters[id] = 3;
@@ -1764,7 +1798,7 @@ app.get("/pages/workouts/:id/active", (c) => {
                     <input type="number" name="weight_\${id}_\${i}" value="\${set.weight}" step="2.5" onfocus="this.select()" oninput="saveProgress()">
                     <button type="button" class="spinner-btn" onclick="adjustInput(this, 2.5)">+</button>
                   </div>
-                  <span class="set-unit">kg</span>
+                  <span class="set-unit">\${weightUnit}</span>
                   <button type="button" class="set-check" onclick="toggleSetComplete(this)"></button>
                 </div>
               \`).join('')}
@@ -1826,7 +1860,7 @@ app.get("/pages/workouts/:id/active", (c) => {
                              value="\${set.weight || ''}" step="2.5" onfocus="this.select()" oninput="saveProgress()">
                       <button type="button" class="spinner-btn" onclick="adjustInput(this, 2.5)">+</button>
                     </div>
-                    <span class="set-unit">kg</span>
+                    <span class="set-unit">\${weightUnit}</span>
                     <button type="button" class="set-check \${set.completed ? 'completed' : ''}" onclick="toggleSetComplete(this)"></button>
                   \`;
                   container.appendChild(setRow);
@@ -1924,7 +1958,7 @@ app.get("/pages/workouts/:id/active", (c) => {
                      placeholder="0" step="2.5" onfocus="this.select()" oninput="saveProgress()">
               <button type="button" class="spinner-btn" onclick="adjustInput(this, 2.5)">+</button>
             </div>
-            <span class="set-unit">kg</span>
+            <span class="set-unit">\${weightUnit}</span>
             <button type="button" class="set-check" onclick="toggleSetComplete(this)"></button>
           \`;
           container.appendChild(setRow);
@@ -2029,6 +2063,12 @@ app.post("/api/templates", async (c) => {
   const user = requireAuthApi(c);
   if (!user) return c.json({ error: "Unauthorized" }, 401);
 
+  // Get user's unit preference for conversion
+  const userSettings = db
+    .query("SELECT units FROM users WHERE id = ?")
+    .get(user.id) as { units: string };
+  const units = userSettings?.units || "kg";
+
   const formData = await c.req.formData();
   const name = formData.get("name") as string;
   const restTime = parseInt((formData.get("rest_time") as string) || "180");
@@ -2056,11 +2096,16 @@ app.post("/api/templates", async (c) => {
   const templateId = result.lastInsertRowid;
 
   // Add exercises with sets data (JSON array of {reps, weight}) and increment
+  // Convert weights to kg for storage if user uses lbs
   const insertExercise = db.prepare(
     "INSERT INTO template_exercises (template_id, exercise_id, sort_order, sets_data, increment) VALUES (?, ?, ?, ?, ?)",
   );
   exercises.forEach((ex, index) => {
-    const setsData = JSON.stringify(ex.sets || [{ reps: 10, weight: 20 }]);
+    const setsInKg = (ex.sets || [{ reps: 10, weight: 20 }]).map((s) => ({
+      reps: s.reps,
+      weight: storageWeight(s.weight, units),
+    }));
+    const setsData = JSON.stringify(setsInKg);
     const increment = ex.increment || 2.5;
     insertExercise.run(templateId, ex.id, index, setsData, increment);
   });
@@ -2086,6 +2131,12 @@ app.post("/api/templates", async (c) => {
 app.put("/api/templates/:id", async (c) => {
   const user = requireAuthApi(c);
   if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  // Get user's unit preference for conversion
+  const userSettings = db
+    .query("SELECT units FROM users WHERE id = ?")
+    .get(user.id) as { units: string };
+  const units = userSettings?.units || "kg";
 
   const id = parseInt(c.req.param("id"));
   const formData = await c.req.formData();
@@ -2114,11 +2165,16 @@ app.put("/api/templates/:id", async (c) => {
   // Delete existing exercises and re-add them
   db.prepare("DELETE FROM template_exercises WHERE template_id = ?").run(id);
 
+  // Convert weights to kg for storage if user uses lbs
   const insertExercise = db.prepare(
     "INSERT INTO template_exercises (template_id, exercise_id, sort_order, sets_data, increment) VALUES (?, ?, ?, ?, ?)",
   );
   exercises.forEach((ex, index) => {
-    const setsData = JSON.stringify(ex.sets || [{ reps: 10, weight: 20 }]);
+    const setsInKg = (ex.sets || [{ reps: 10, weight: 20 }]).map((s) => ({
+      reps: s.reps,
+      weight: storageWeight(s.weight, units),
+    }));
+    const setsData = JSON.stringify(setsInKg);
     const increment = ex.increment || 2.5;
     insertExercise.run(id, ex.id, index, setsData, increment);
   });
@@ -2162,6 +2218,15 @@ app.delete("/api/templates/:id", (c) => {
 
 // Complete workout
 app.post("/api/workouts/:id/complete", async (c) => {
+  const user = requireAuthApi(c);
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  // Get user's unit preference for conversion
+  const userSettings = db
+    .query("SELECT units FROM users WHERE id = ?")
+    .get(user.id) as { units: string };
+  const units = userSettings?.units || "kg";
+
   const workoutId = parseInt(c.req.param("id"));
   const { sets } = (await c.req.json()) as {
     sets: {
@@ -2172,7 +2237,7 @@ app.post("/api/workouts/:id/complete", async (c) => {
     }[];
   };
 
-  // Insert all sets
+  // Insert all sets (convert weight to kg if user uses lbs)
   const insertSet = db.prepare(
     "INSERT INTO sets (workout_id, exercise_id, set_number, weight, reps) VALUES (?, ?, ?, ?, ?)",
   );
@@ -2182,7 +2247,7 @@ app.post("/api/workouts/:id/complete", async (c) => {
       workoutId,
       set.exercise_id,
       set.set_number,
-      set.weight,
+      storageWeight(set.weight, units),
       set.reps,
     );
   }

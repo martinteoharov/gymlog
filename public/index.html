@@ -117,6 +117,23 @@
         </div>
 
         <script>
+            // Get client's current day of week (0=Sunday, 6=Saturday)
+            function getClientDayOfWeek() {
+                return new Date().getDay();
+            }
+
+            // Add day of week to URL for timezone-sensitive routes
+            function addDowToUrl(url) {
+                if (
+                    url.includes("/pages/home") ||
+                    url.includes("/pages/workouts")
+                ) {
+                    const separator = url.includes("?") ? "&" : "?";
+                    return url + separator + "dow=" + getClientDayOfWeek();
+                }
+                return url;
+            }
+
             // Route mapping for static routes
             const routes = {
                 "/": { page: "home", endpoint: "/pages/home" },
@@ -168,10 +185,33 @@
                     );
                 });
 
-                // Load content
-                htmx.ajax("GET", endpoint, {
+                // Load content (add day of week for timezone accuracy)
+                htmx.ajax("GET", addDowToUrl(endpoint), {
                     target: "#content",
                     swap: "innerHTML transition:true",
+                });
+            }
+
+            // Update active nav based on current URL
+            function updateActiveNav() {
+                const path = window.location.pathname;
+                let activePage = "home";
+
+                if (path === "/" || path === "") {
+                    activePage = "home";
+                } else if (path.startsWith("/workouts")) {
+                    activePage = "workouts";
+                } else if (path.startsWith("/stats")) {
+                    activePage = "stats";
+                } else if (path.startsWith("/account")) {
+                    activePage = "account";
+                }
+
+                document.querySelectorAll(".nav-item").forEach((item) => {
+                    item.classList.toggle(
+                        "active",
+                        item.dataset.page === activePage,
+                    );
                 });
             }
 
@@ -186,7 +226,21 @@
             });
 
             // Handle browser back/forward
-            window.addEventListener("popstate", loadCurrentRoute);
+            window.addEventListener("popstate", function () {
+                updateActiveNav();
+                loadCurrentRoute();
+            });
+
+            // Update active nav after HTMX pushes URL
+            document.body.addEventListener(
+                "htmx:pushedIntoHistory",
+                updateActiveNav,
+            );
+
+            // Intercept HTMX requests to add day of week for timezone-sensitive routes
+            document.body.addEventListener("htmx:configRequest", function (e) {
+                e.detail.path = addDowToUrl(e.detail.path);
+            });
 
             // Handle HTMX events for loading states
             document.body.addEventListener("htmx:beforeRequest", function (e) {
@@ -207,6 +261,7 @@
             });
 
             // Load initial route
+            updateActiveNav();
             loadCurrentRoute();
         </script>
     </body>
