@@ -37,11 +37,29 @@
 	let originalDays: number[] = [];
 	let originalExerciseCount = 0;
 
+	// Handle page unload to save pending changes
+	function handleBeforeUnload(event: BeforeUnloadEvent) {
+		if (saveTimeout && checkForChanges()) {
+			// Try to save synchronously isn't possible, but we can warn the user
+			event.preventDefault();
+			event.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+			return event.returnValue;
+		}
+	}
+
 	onMount(async () => {
 		await loadTemplate();
+		// Add beforeunload handler
+		if (typeof window !== 'undefined') {
+			window.addEventListener('beforeunload', handleBeforeUnload);
+		}
 	});
 
 	onDestroy(() => {
+		// Remove beforeunload handler
+		if (typeof window !== 'undefined') {
+			window.removeEventListener('beforeunload', handleBeforeUnload);
+		}
 		// Save immediately if there's a pending save and there are actual changes
 		if (saveTimeout) {
 			clearTimeout(saveTimeout);

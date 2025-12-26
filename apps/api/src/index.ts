@@ -1,9 +1,12 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { db } from "./db";
 
 const app = new Hono();
+
+// Environment detection
+const isProduction = process.env.NODE_ENV === "production";
 
 // Enable CORS for mobile app
 app.use(
@@ -57,6 +60,50 @@ function createSession(userId: number): string {
   ).run(sessionId, userId, expiresAt);
 
   return sessionId;
+}
+
+// Set session cookie with proper security settings
+function setSessionCookie(c: Context, sessionId: string): void {
+  setCookie(c, "session", sessionId, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: "Lax",
+    maxAge: SESSION_DURATION_MS / 1000,
+    path: "/",
+  });
+}
+
+// Deactivate all programmes for a user except one
+function deactivateOtherProgrammes(userId: number, exceptId?: number): void {
+  if (exceptId !== undefined) {
+    db.prepare("UPDATE programmes SET is_active = 0 WHERE user_id = ? AND id != ?").run(userId, exceptId);
+  } else {
+    db.prepare("UPDATE programmes SET is_active = 0 WHERE user_id = ?").run(userId);
+  }
+}
+
+// Insert template exercises
+function insertTemplateExercises(
+  templateId: number,
+  exercises: { id: number; sets?: { reps: number; weight: number }[]; increment?: number }[]
+): void {
+  const stmt = db.prepare(
+    "INSERT INTO template_exercises (template_id, exercise_id, sort_order, sets_data, increment) VALUES (?, ?, ?, ?, ?)"
+  );
+  exercises.forEach((ex, index) => {
+    const setsData = JSON.stringify(ex.sets || [{ reps: 10, weight: 20 }]);
+    const increment = ex.increment || 2.5;
+    stmt.run(templateId, ex.id, index, setsData, increment);
+  });
+}
+
+// Update schedule for a template
+function updateTemplateSchedule(userId: number, templateId: number, days: number[]): void {
+  db.prepare("DELETE FROM schedule WHERE user_id = ? AND template_id = ?").run(userId, templateId);
+  const stmt = db.prepare("INSERT OR REPLACE INTO schedule (user_id, day_of_week, template_id) VALUES (?, ?, ?)");
+  days.forEach((day) => {
+    stmt.run(userId, day, templateId);
+  });
 }
 
 // Get user from session
@@ -174,14 +221,7 @@ app.post("/api/auth/register", async (c) => {
 
   const userId = result.lastInsertRowid as number;
   const sessionId = createSession(userId);
-
-  setCookie(c, "session", sessionId, {
-    httpOnly: true,
-    secure: false,
-    sameSite: "Lax",
-    maxAge: SESSION_DURATION_MS / 1000,
-    path: "/",
-  });
+  setSessionCookie(c, sessionId);
 
   return c.json({
     success: true,
@@ -220,14 +260,7 @@ app.post("/api/auth/login", async (c) => {
   }
 
   const sessionId = createSession(user.id);
-
-  setCookie(c, "session", sessionId, {
-    httpOnly: true,
-    secure: false,
-    sameSite: "Lax",
-    maxAge: SESSION_DURATION_MS / 1000,
-    path: "/",
-  });
+  setSessionCookie(c, sessionId);
 
   return c.json({
     success: true,
@@ -461,7 +494,6 @@ app.post("/api/templates", async (c) => {
     return c.json({ error: "Name is required" }, 400);
   }
 
-  const now = Date.now();
   const result = db
     .prepare(
       "INSERT INTO templates (user_id, name, rest_time) VALUES (?, ?, ?)",
@@ -469,32 +501,8 @@ app.post("/api/templates", async (c) => {
     .run(user.id, name, rest_time);
   const templateId = result.lastInsertRowid as number;
 
-  // Insert exercises
-  const insertExercise = db.prepare(
-    "INSERT INTO template_exercises (template_id, exercise_id, sort_order, sets_data, increment) VALUES (?, ?, ?, ?, ?)",
-  );
-  exercises.forEach(
-    (
-      ex: {
-        id: number;
-        sets: { reps: number; weight: number }[];
-        increment?: number;
-      },
-      index: number,
-    ) => {
-      const setsData = JSON.stringify(ex.sets || [{ reps: 10, weight: 20 }]);
-      const increment = ex.increment || 2.5;
-      insertExercise.run(templateId, ex.id, index, setsData, increment);
-    },
-  );
-
-  // Set schedule
-  const insertSchedule = db.prepare(
-    "INSERT OR REPLACE INTO schedule (user_id, day_of_week, template_id) VALUES (?, ?, ?)",
-  );
-  days.forEach((day: number) => {
-    insertSchedule.run(user.id, day, templateId);
-  });
+  insertTemplateExercises(templateId, exercises);
+  updateTemplateSchedule(user.id, templateId, days);
 
   return c.json({ id: templateId });
 });
@@ -528,37 +536,8 @@ app.put("/api/templates/:id", async (c) => {
 
   // Replace exercises
   db.prepare("DELETE FROM template_exercises WHERE template_id = ?").run(id);
-
-  const insertExercise = db.prepare(
-    "INSERT INTO template_exercises (template_id, exercise_id, sort_order, sets_data, increment) VALUES (?, ?, ?, ?, ?)",
-  );
-  exercises.forEach(
-    (
-      ex: {
-        id: number;
-        sets: { reps: number; weight: number }[];
-        increment?: number;
-      },
-      index: number,
-    ) => {
-      const setsData = JSON.stringify(ex.sets || [{ reps: 10, weight: 20 }]);
-      const increment = ex.increment || 2.5;
-      insertExercise.run(id, ex.id, index, setsData, increment);
-    },
-  );
-
-  // Replace schedule
-  db.prepare("DELETE FROM schedule WHERE user_id = ? AND template_id = ?").run(
-    user.id,
-    id,
-  );
-
-  const insertSchedule = db.prepare(
-    "INSERT OR REPLACE INTO schedule (user_id, day_of_week, template_id) VALUES (?, ?, ?)",
-  );
-  days.forEach((day: number) => {
-    insertSchedule.run(user.id, day, id);
-  });
+  insertTemplateExercises(id, exercises);
+  updateTemplateSchedule(user.id, id, days);
 
   return c.json({ success: true });
 });
@@ -670,7 +649,7 @@ app.post("/api/programmes", async (c) => {
 
   // If setting as active, deactivate others first
   if (is_active) {
-    db.prepare("UPDATE programmes SET is_active = 0 WHERE user_id = ?").run(user.id);
+    deactivateOtherProgrammes(user.id);
   }
 
   const result = db
@@ -754,8 +733,8 @@ app.post("/api/programmes/:id/activate", (c) => {
     return c.json({ error: "Programme not found" }, 404);
   }
 
-  // Deactivate all, then activate this one
-  db.prepare("UPDATE programmes SET is_active = 0 WHERE user_id = ?").run(user.id);
+  // Deactivate all others, then activate this one
+  deactivateOtherProgrammes(user.id, id);
   db.prepare("UPDATE programmes SET is_active = 1 WHERE id = ?").run(id);
 
   return c.json({ success: true });
@@ -991,7 +970,7 @@ app.post("/api/sync/push", async (c) => {
           if (table === "programmes") {
             // If setting as active, deactivate others first
             if (data.is_active) {
-              db.prepare("UPDATE programmes SET is_active = 0 WHERE user_id = ? AND id != ?").run(user.id, data.id);
+              deactivateOtherProgrammes(user.id, data.id);
             }
             db.prepare(
               `INSERT OR REPLACE INTO programmes (id, user_id, name, is_active, created_at)
@@ -1121,11 +1100,13 @@ app.get("/api/sync/pull", (c) => {
 
   let templateExercises: any[] = [];
   if (templateIds.length > 0) {
+    // Use parameterized query to prevent SQL injection
+    const placeholders = templateIds.map(() => "?").join(",");
     templateExercises = db
       .query(
-        `SELECT * FROM template_exercises WHERE template_id IN (${templateIds.join(",")})`,
+        `SELECT * FROM template_exercises WHERE template_id IN (${placeholders})`,
       )
-      .all();
+      .all(...templateIds);
   }
 
   const schedule = db
@@ -1138,9 +1119,11 @@ app.get("/api/sync/pull", (c) => {
   const workoutIds = workouts.map((w: any) => w.id);
   let sets: any[] = [];
   if (workoutIds.length > 0) {
+    // Use parameterized query to prevent SQL injection
+    const placeholders = workoutIds.map(() => "?").join(",");
     sets = db
-      .query(`SELECT * FROM sets WHERE workout_id IN (${workoutIds.join(",")})`)
-      .all();
+      .query(`SELECT * FROM sets WHERE workout_id IN (${placeholders})`)
+      .all(...workoutIds);
   }
 
   return c.json({
@@ -1173,11 +1156,13 @@ app.get("/api/sync/full", (c) => {
 
   let templateExercises: any[] = [];
   if (templateIds.length > 0) {
+    // Use parameterized query to prevent SQL injection
+    const placeholders = templateIds.map(() => "?").join(",");
     templateExercises = db
       .query(
-        `SELECT * FROM template_exercises WHERE template_id IN (${templateIds.join(",")})`,
+        `SELECT * FROM template_exercises WHERE template_id IN (${placeholders})`,
       )
-      .all();
+      .all(...templateIds);
   }
 
   const schedule = db
@@ -1190,9 +1175,11 @@ app.get("/api/sync/full", (c) => {
   const workoutIds = workouts.map((w: any) => w.id);
   let sets: any[] = [];
   if (workoutIds.length > 0) {
+    // Use parameterized query to prevent SQL injection
+    const placeholders = workoutIds.map(() => "?").join(",");
     sets = db
-      .query(`SELECT * FROM sets WHERE workout_id IN (${workoutIds.join(",")})`)
-      .all();
+      .query(`SELECT * FROM sets WHERE workout_id IN (${placeholders})`)
+      .all(...workoutIds);
   }
 
   return c.json({

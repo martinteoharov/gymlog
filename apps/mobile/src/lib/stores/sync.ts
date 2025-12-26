@@ -18,7 +18,9 @@ const ERROR_RESET_DELAY = 10000; // Reset error state after 10 seconds
 let retryCount = 0;
 let retryTimeout: ReturnType<typeof setTimeout> | null = null;
 let errorResetTimeout: ReturnType<typeof setTimeout> | null = null;
-let syncInProgress = false;
+
+// Mutex for preventing concurrent syncs
+let syncPromise: Promise<boolean> | null = null;
 
 // ID generation for new records (negative IDs indicate local-only, will be replaced by server)
 let localIdCounter = -1;
@@ -161,19 +163,8 @@ function scheduleRetry() {
 	}, delay);
 }
 
-// Main sync function
-export async function sync(): Promise<boolean> {
-	// Skip sync if not authenticated
-	if (!isAuthenticated()) {
-		return false;
-	}
-
-	// Prevent concurrent syncs
-	if (syncInProgress) {
-		return false;
-	}
-
-	syncInProgress = true;
+// Internal sync implementation
+async function syncInternal(): Promise<boolean> {
 	syncStatus.set('syncing');
 	clearErrorReset();
 
@@ -197,7 +188,6 @@ export async function sync(): Promise<boolean> {
 			} else if (response.status === 401) {
 				// Not authenticated, skip sync
 				syncStatus.set('idle');
-				syncInProgress = false;
 				return false;
 			} else {
 				throw new Error(`Push failed with status ${response.status}`);
@@ -230,14 +220,32 @@ export async function sync(): Promise<boolean> {
 		// Success - reset retry count
 		retryCount = 0;
 		syncStatus.set('idle');
-		syncInProgress = false;
 		return true;
 	} catch (error) {
 		console.error('Sync error:', error);
-		syncInProgress = false;
 		scheduleRetry();
 		return false;
 	}
+}
+
+// Main sync function with mutex to prevent concurrent syncs
+export async function sync(): Promise<boolean> {
+	// Skip sync if not authenticated
+	if (!isAuthenticated()) {
+		return false;
+	}
+
+	// If a sync is already in progress, wait for it and return its result
+	if (syncPromise) {
+		return syncPromise;
+	}
+
+	// Start new sync with mutex
+	syncPromise = syncInternal().finally(() => {
+		syncPromise = null;
+	});
+
+	return syncPromise;
 }
 
 // Initial sync on app load (only call this when user is authenticated)
@@ -266,13 +274,8 @@ export async function initSync() {
 	}
 }
 
-// Force full sync (pull all data)
-export async function fullSync(): Promise<boolean> {
-	if (syncInProgress) {
-		return false;
-	}
-
-	syncInProgress = true;
+// Internal full sync implementation
+async function fullSyncInternal(): Promise<boolean> {
 	syncStatus.set('syncing');
 
 	try {
@@ -297,7 +300,6 @@ export async function fullSync(): Promise<boolean> {
 			safeSetItem('lastSync', now.toString());
 			lastSyncTime.set(now);
 			syncStatus.set('idle');
-			syncInProgress = false;
 			return true;
 		} else {
 			throw new Error(`Full sync failed with status ${response.status}`);
@@ -305,7 +307,6 @@ export async function fullSync(): Promise<boolean> {
 	} catch (error) {
 		console.error('Full sync error:', error);
 		syncStatus.set('error');
-		syncInProgress = false;
 
 		// Auto-reset error state
 		clearErrorReset();
@@ -317,6 +318,21 @@ export async function fullSync(): Promise<boolean> {
 
 		return false;
 	}
+}
+
+// Force full sync (pull all data) with mutex
+export async function fullSync(): Promise<boolean> {
+	// If a sync is already in progress, wait for it first
+	if (syncPromise) {
+		await syncPromise;
+	}
+
+	// Start full sync with mutex
+	syncPromise = fullSyncInternal().finally(() => {
+		syncPromise = null;
+	});
+
+	return syncPromise;
 }
 
 // Clear local sync state (for logout)
@@ -609,6 +625,7 @@ export async function createWorkoutLocal(
 
 /**
  * Complete a workout by saving all sets and marking it complete.
+ * Uses a transaction to ensure atomicity - either all data is saved or none.
  */
 export async function completeWorkoutLocal(
 	workoutId: number,
@@ -617,29 +634,48 @@ export async function completeWorkoutLocal(
 	const now = Date.now();
 	const completedAt = new Date().toISOString();
 
-	// Save all sets
-	for (const set of sets) {
-		const setId = generateLocalId();
-		const workoutSet = {
-			id: setId,
-			workout_id: workoutId,
-			exercise_id: set.exercise_id,
-			set_number: set.set_number,
-			weight: set.weight,
-			reps: set.reps,
-			completed_at: completedAt,
-			updated_at: now
-		};
-		await db.sets.put(workoutSet);
-		await queueChange('sets', setId, 'create', workoutSet);
-	}
+	// Use transaction for atomicity
+	await db.transaction('rw', [db.sets, db.workouts, db.outbox], async () => {
+		// Save all sets
+		for (const set of sets) {
+			const setId = generateLocalId();
+			const workoutSet = {
+				id: setId,
+				workout_id: workoutId,
+				exercise_id: set.exercise_id,
+				set_number: set.set_number,
+				weight: set.weight,
+				reps: set.reps,
+				completed_at: completedAt,
+				updated_at: now
+			};
+			await db.sets.put(workoutSet);
+			await db.outbox.add({
+				table: 'sets',
+				recordId: setId,
+				action: 'create',
+				data: workoutSet,
+				createdAt: Date.now()
+			});
+		}
 
-	// Update the workout as completed
-	const workout = await db.workouts.get(workoutId);
-	if (workout) {
-		workout.completed_at = completedAt;
-		workout.updated_at = now;
-		await db.workouts.put(workout);
-		await queueChange('workouts', workoutId, 'update', workout);
-	}
+		// Update the workout as completed
+		const workout = await db.workouts.get(workoutId);
+		if (workout) {
+			workout.completed_at = completedAt;
+			workout.updated_at = now;
+			await db.workouts.put(workout);
+			await db.outbox.add({
+				table: 'workouts',
+				recordId: workoutId,
+				action: 'update',
+				data: workout,
+				createdAt: Date.now()
+			});
+		}
+	});
+
+	// Update pending count and trigger sync after transaction completes
+	await updatePendingCount();
+	syncIfOnline();
 }

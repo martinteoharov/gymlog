@@ -193,9 +193,15 @@
 	}
 
 	function restoreState(saved: ActiveWorkoutState) {
-		// Restore input values - using exercise index as key
-		for (const [exIndexStr, setsData] of Object.entries(saved.inputs || {})) {
-			const exIndex = parseInt(exIndexStr);
+		// Build a map of exercise_id to exercise index for lookup
+		const exerciseIdToIndex = new Map(exercises.map((ex, idx) => [ex.exercise_id, idx]));
+
+		// Restore input values - using exercise_id as key (stored as string in JSON)
+		for (const [exerciseIdStr, setsData] of Object.entries(saved.inputs || {})) {
+			const exerciseId = parseInt(exerciseIdStr);
+			const exIndex = exerciseIdToIndex.get(exerciseId);
+			if (exIndex === undefined) continue; // Exercise no longer in template
+
 			const ex = exercises[exIndex];
 			if (ex && typeof setsData === 'object') {
 				for (const [setIdxStr, values] of Object.entries(setsData)) {
@@ -208,12 +214,15 @@
 			}
 		}
 
-		// Restore completed sets
+		// Restore completed sets - using exercise_id in selector
 		for (const selector of saved.completedSets || []) {
 			const match = selector.match(/ex-(\d+)-set-(\d+)/);
 			if (match) {
-				const exIndex = parseInt(match[1]);
+				const exerciseId = parseInt(match[1]);
 				const setIdx = parseInt(match[2]);
+				const exIndex = exerciseIdToIndex.get(exerciseId);
+				if (exIndex === undefined) continue;
+
 				const ex = exercises[exIndex];
 				if (ex?.sets[setIdx]) {
 					ex.sets[setIdx].completed = true;
@@ -221,8 +230,9 @@
 			}
 		}
 
-		// Restore timer state
-		if (saved.timerEndTime && saved.timerEndTime > Date.now()) {
+		// Restore timer state - validate it's not stale (max 5 min in future)
+		const maxTimerFuture = Date.now() + 300000; // 5 minutes
+		if (saved.timerEndTime && saved.timerEndTime > Date.now() && saved.timerEndTime < maxTimerFuture) {
 			timerEndTime = saved.timerEndTime;
 			const remaining = Math.ceil((timerEndTime - Date.now()) / 1000);
 			if (remaining > 0) {
@@ -234,17 +244,17 @@
 		exercises = [...exercises]; // Trigger reactivity
 	}
 
-	// Save progress to Dexie - using exercise index as key
+	// Save progress to Dexie - using exercise_id as key for reliable restore
 	async function saveProgress() {
 		const inputs: Record<string, Record<string, { reps: number; weight: number }>> = {};
 		const completedSets: string[] = [];
 
-		exercises.forEach((ex, exIndex) => {
-			inputs[exIndex] = {};
+		exercises.forEach((ex) => {
+			inputs[ex.exercise_id] = {};
 			ex.sets.forEach((set, setIdx) => {
-				inputs[exIndex][setIdx] = { reps: set.reps, weight: set.weight };
+				inputs[ex.exercise_id][setIdx] = { reps: set.reps, weight: set.weight };
 				if (set.completed) {
-					completedSets.push(`ex-${exIndex}-set-${setIdx}`);
+					completedSets.push(`ex-${ex.exercise_id}-set-${setIdx}`);
 				}
 			});
 		});

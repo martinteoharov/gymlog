@@ -356,11 +356,16 @@ export interface TemplateWithExercises {
  * Get all templates for a user with exercises and scheduled days (batch loaded)
  */
 export async function getTemplatesWithDetails(userId: number): Promise<TemplateWithExercises[]> {
-	// Load all data in parallel
-	const [templates, schedules, allTemplateExercises, exercises] = await Promise.all([
-		db.templates.where('user_id').equals(userId).toArray(),
+	// Load templates first to get their IDs
+	const templates = await db.templates.where('user_id').equals(userId).toArray();
+	const templateIds = templates.map(t => t.id);
+
+	// Load related data in parallel, filtering template exercises by user's templates
+	const [schedules, allTemplateExercises, exercises] = await Promise.all([
 		db.schedule.where('user_id').equals(userId).toArray(),
-		db.templateExercises.toArray(),
+		templateIds.length > 0
+			? db.templateExercises.where('template_id').anyOf(templateIds).toArray()
+			: Promise.resolve([]),
 		db.exercises.toArray()
 	]);
 
