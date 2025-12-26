@@ -1,0 +1,38 @@
+<div class="page">
+  <%~ include("../partials/page-header", { title: "New Template" }) %>
+
+  <form hx-post="/api/templates" hx-target="#content" hx-swap="innerHTML transition:true" hx-push-url="/workouts">
+    <div class="form-group">
+      <label class="form-label">Template Name</label>
+      <input type="text" name="name" class="form-input" placeholder="e.g., Push Day" required>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Rest Time Between Sets</label>
+      <%~ include("../partials/rest-time-picker", { value: 180, display: "3:00" }) %>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Schedule (select days)</label>
+      <%~ include("../partials/day-toggle", { days: it.dayNames, selected: [] }) %>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Exercises</label>
+      <div id="selected-exercises" class="list" style="margin-bottom: 12px;"></div>
+      <button type="button" class="btn btn-secondary btn-full" onclick="openExerciseModal()">
+        + Add Exercise
+      </button>
+    </div>
+
+    <input type="hidden" name="exercises" id="exercises-input" value="[]">
+
+    <button type="submit" class="btn btn-primary btn-full" style="margin-top: 24px;">
+      Create Template
+    </button>
+  </form>
+
+  <%~ include("../partials/exercise-modal", { grouped: it.grouped }) %>
+
+  <%~ include("../scripts/template-editor", { exercises: [], restTime: 180 }) %>
+</div>

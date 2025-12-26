@@ -1,0 +1,14 @@
+<div class="page">
+  <div class="section-title">Account</div>
+
+  <div class="card">
+    <div class="card-title"><%= it.user.name || it.user.username %></div>
+    <div class="card-subtitle">@<%= it.user.username %></div>
+  </div>
+
+  <button class="btn btn-danger btn-full" style="margin-top: 24px;"
+          hx-post="/api/auth/logout"
+          hx-swap="none">
+    Log Out
+  </button>
+</div>

@@ -13,7 +13,6 @@ db.exec(`
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     name TEXT,
-    units TEXT DEFAULT 'kg',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 

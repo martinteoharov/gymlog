@@ -1,18 +1,19 @@
 {
   "name": "gymlog",
-  "module": "src/index.ts",
+  "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run --watch src/index.ts",
-    "start": "bun run src/index.ts"
+    "dev:api": "cd apps/api && bun run dev",
+    "dev:mobile": "cd apps/mobile && bun run dev",
+    "dev": "concurrently \"bun run dev:api\" \"bun run dev:mobile\"",
+    "build:mobile": "cd apps/mobile && bun run build",
+    "start:api": "cd apps/api && bun run start"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "concurrently": "^8.2.2"
   },
-  "peerDependencies": {
-    "typescript": "^5.0.0"
-  },
-  "dependencies": {
-    "hono": "^4.11.2"
-  }
+  "workspaces": [
+    "apps/*"
+  ]
 }

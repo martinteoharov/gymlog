@@ -1,0 +1,46 @@
+<div class="page">
+  <%~ include("../partials/calendar-strip", { days: it.calendarDays }) %>
+
+  <div class="section-subtitle">Today's Workout</div>
+  <% if (it.todaySchedule && it.todaySchedule.template_id) { %>
+  <div class="workout-card highlighted"
+       hx-get="/pages/workouts/<%= it.todaySchedule.template_id %>/active"
+       hx-target="#content"
+       hx-swap="innerHTML transition:true">
+    <div class="workout-card-info">
+      <div class="workout-card-name"><%= it.todaySchedule.template_name %></div>
+      <div class="workout-card-meta"><%= it.exerciseList %></div>
+    </div>
+    <button class="start-btn">Start</button>
+  </div>
+  <% } else { %>
+  <div class="card">
+    <div class="card-subtitle">No workout scheduled for today</div>
+  </div>
+  <% } %>
+
+  <div class="section-subtitle" style="margin-top: 24px;">Stats</div>
+  <div class="stats-grid">
+    <%~ include("../partials/stat-card", { value: it.totalWorkouts, label: 'Total Workouts' }) %>
+    <%~ include("../partials/stat-card", { value: it.thisWeekWorkouts, label: 'This Week' }) %>
+  </div>
+
+  <div class="section-subtitle">Recent Workouts</div>
+  <% if (it.recentWorkouts.length > 0) { %>
+  <% it.recentWorkouts.forEach(workout => { %>
+  <% const date = new Date(workout.started_at); %>
+  <div class="recent-workout">
+    <div class="recent-workout-date">
+      <span class="recent-workout-day"><%= it.dayNames[date.getDay()] %></span>
+      <span class="recent-workout-num"><%= date.getDate() %></span>
+    </div>
+    <div class="recent-workout-info">
+      <div class="recent-workout-name"><%= workout.template_name || 'Quick Workout' %></div>
+      <div class="recent-workout-meta">Completed</div>
+    </div>
+  </div>
+  <% }) %>
+  <% } else { %>
+  <%~ include("../partials/empty-state", { text: "No workouts yet. Start your first one!" }) %>
+  <% } %>
+</div>

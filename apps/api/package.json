@@ -1,0 +1,16 @@
+{
+  "name": "@gymlog/api",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "eta": "^4.5.0",
+    "hono": "^4.11.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

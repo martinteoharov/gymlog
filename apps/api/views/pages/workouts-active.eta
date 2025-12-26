@@ -1,0 +1,101 @@
+<div class="page">
+  <div class="page-header" style="justify-content: space-between;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <button class="back-btn" onclick="cancelWorkout()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+      <h1 class="page-title"><%= it.template.name %></h1>
+    </div>
+    <div class="workout-timer" id="rest-timer" onclick="toggleTimer()">
+      <svg class="timer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polyline points="12 6 12 12 16 14"></polyline>
+      </svg>
+      <span class="timer-display" id="timer-display">0:00</span>
+    </div>
+  </div>
+
+  <form id="workout-form">
+    <input type="hidden" name="template_id" value="<%= it.template.id %>">
+
+    <div id="exercises-container">
+      <% it.exercises.forEach(ex => { %>
+      <div class="card" style="margin-bottom: 16px;" data-exercise-card="<%= ex.exercise_id %>">
+        <div class="card-title"><%= ex.exercise_name %></div>
+        <% if (ex.lastSets.length > 0) { %>
+        <div class="card-subtitle">Last: <%= ex.lastSets.map(s => s.reps + ' × ' + s.weight + 'kg').join(', ') %></div>
+        <% } %>
+
+        <div class="sets-container" data-exercise="<%= ex.exercise_id %>" style="margin-top: 12px;">
+          <% ex.templateSets.forEach((set, setIndex) => { %>
+          <div class="set-row" data-set-index="<%= setIndex %>">
+            <span class="set-number"><%= setIndex + 1 %></span>
+            <div class="input-spinner">
+              <button type="button" class="spinner-btn" onclick="adjustInput(this, -1)">−</button>
+              <input type="number" name="reps_<%= ex.exercise_id %>_<%= setIndex %>"
+                     value="<%= ex.lastSets[setIndex]?.reps || set.reps %>" onfocus="this.select()" oninput="saveProgress()">
+              <button type="button" class="spinner-btn" onclick="adjustInput(this, 1)">+</button>
+            </div>
+            <span class="set-x">×</span>
+            <div class="input-spinner">
+              <button type="button" class="spinner-btn" onclick="adjustInput(this, -2.5)">−</button>
+              <input type="number" name="weight_<%= ex.exercise_id %>_<%= setIndex %>"
+                     value="<%= ex.lastSets[setIndex]?.weight || set.weight %>" step="2.5" onfocus="this.select()" oninput="saveProgress()">
+              <button type="button" class="spinner-btn" onclick="adjustInput(this, 2.5)">+</button>
+            </div>
+            <span class="set-unit">kg</span>
+            <button type="button" class="set-check" onclick="toggleSetComplete(this)"></button>
+          </div>
+          <% }) %>
+        </div>
+
+        <button type="button" class="btn btn-secondary btn-sm" style="margin-top: 8px;"
+                onclick="addSetToExercise(<%= ex.exercise_id %>)">
+          + Add Set
+        </button>
+      </div>
+      <% }) %>
+    </div>
+
+    <button type="button" class="btn btn-secondary btn-full" style="margin-top: 16px;"
+            onclick="openExerciseModal()">
+      + Add Exercise
+    </button>
+  </form>
+
+  <div class="sticky-bottom">
+    <button type="button" class="btn btn-primary btn-full"
+            onclick="finishWorkout()">
+      Complete Workout
+    </button>
+  </div>
+
+  <div id="exercise-modal" class="modal-overlay" onclick="if(event.target === this) closeExerciseModal()">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Add Exercise</h3>
+        <button type="button" class="modal-close" onclick="closeExerciseModal()">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-search">
+        <input type="text" class="form-input" placeholder="Search exercises..."
+               id="exercise-search" oninput="filterExercises(this.value)">
+      </div>
+      <div class="modal-body">
+        <div id="exercise-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <%~ include("../scripts/active-workout", {
+    templateId: it.template.id,
+    exercisesData: it.exercisesData,
+    restTime: it.restTime
+  }) %>
+</div>

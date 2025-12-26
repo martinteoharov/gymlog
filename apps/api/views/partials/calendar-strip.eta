@@ -1,0 +1,8 @@
+<div class="calendar-strip">
+  <% it.days.forEach(day => { %>
+  <button class="calendar-day<% if (day.isToday) { %> today<% } %><% if (day.hasWorkout) { %> has-workout<% } %>">
+    <span class="calendar-day-name"><%= day.dayName %></span>
+    <span class="calendar-day-number"><%= day.dayNumber %></span>
+  </button>
+  <% }) %>
+</div>

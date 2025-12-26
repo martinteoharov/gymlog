@@ -1,0 +1,78 @@
+<div class="page">
+  <div class="today-header">
+    <span class="today-day" id="today-day"></span>
+    <span class="today-date" id="today-date"></span>
+  </div>
+
+  <% if (it.todayTemplate) { %>
+  <div class="today-workout-card"
+       hx-get="/pages/workouts/<%= it.todayTemplate.id %>"
+       hx-target="#content"
+       hx-swap="innerHTML transition:true"
+       hx-push-url="/workouts/<%= it.todayTemplate.id %>">
+    <div class="today-workout-label">Today's Workout</div>
+    <div class="today-workout-name"><%= it.todayTemplate.name %></div>
+    <div class="today-workout-meta"><%= it.todayTemplate.exercises.join(', ') || 'No exercises' %></div>
+    <button class="start-btn-large"
+            hx-get="/pages/workouts/<%= it.todayTemplate.id %>/active"
+            hx-target="#content"
+            hx-swap="innerHTML transition:true"
+            hx-push-url="/workouts/<%= it.todayTemplate.id %>/active"
+            onclick="event.stopPropagation()">Start Workout</button>
+  </div>
+  <% } else { %>
+  <div class="no-workout-today">
+    <div class="no-workout-text">No workout scheduled for today</div>
+  </div>
+  <% } %>
+
+  <div class="section-subtitle" style="margin-top: 24px;">My Templates</div>
+  <% it.otherTemplates.forEach(template => { %>
+  <div class="workout-card"
+       hx-get="/pages/workouts/<%= template.id %>"
+       hx-target="#content"
+       hx-swap="innerHTML transition:true"
+       hx-push-url="/workouts/<%= template.id %>">
+    <div class="workout-card-info">
+      <div class="workout-card-name"><%= template.name %></div>
+      <div class="workout-card-meta"><%= template.exercises.join(', ') || 'No exercises' %></div>
+      <div class="workout-card-days"><%= template.scheduledDays.join(', ') || 'Not scheduled' %></div>
+    </div>
+    <button class="start-btn secondary"
+            hx-get="/pages/workouts/<%= template.id %>/active"
+            hx-target="#content"
+            hx-swap="innerHTML transition:true"
+            hx-push-url="/workouts/<%= template.id %>/active"
+            onclick="event.stopPropagation()">Start</button>
+  </div>
+  <% }) %>
+
+  <% if (it.templates.length === 0) { %>
+  <%~ include("../partials/empty-state", {
+    icon: '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>',
+    title: 'No templates yet',
+    text: 'Create your first workout template'
+  }) %>
+  <% } %>
+
+  <button class="btn btn-primary btn-full" style="margin-top: 16px;"
+          hx-get="/pages/workouts/new"
+          hx-target="#content"
+          hx-swap="innerHTML transition:true"
+          hx-push-url="/workouts/new">
+    + Create Template
+  </button>
+
+  <script>
+    (function() {
+      const now = new Date();
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+      const dayEl = document.getElementById('today-day');
+      const dateEl = document.getElementById('today-date');
+      if (dayEl) dayEl.textContent = dayNames[now.getDay()];
+      if (dateEl) dateEl.textContent = monthNames[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
+    })();
+  </script>
+</div>

@@ -1,0 +1,17 @@
+<div class="page-header"<% if (it.style) { %> style="<%= it.style %>"<% } %>>
+  <% if (it.showBack !== false) { %>
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <button class="back-btn" onclick="history.back()">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="15 18 9 12 15 6"></polyline>
+      </svg>
+    </button>
+    <h1 class="page-title"><%= it.title %></h1>
+  </div>
+  <% } else { %>
+  <h1 class="page-title"><%= it.title %></h1>
+  <% } %>
+  <% if (it.rightContent) { %>
+  <%~ it.rightContent %>
+  <% } %>
+</div>

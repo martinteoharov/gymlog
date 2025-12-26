@@ -1,0 +1,462 @@
+<script>
+(function() {
+  const STORAGE_KEY = 'activeWorkout_<%= it.templateId %>';
+  const templateId = <%= it.templateId %>;
+  let exercisesData = <%~ JSON.stringify(it.exercisesData) %>;
+  const REST_TIME = <%= it.restTime %>;
+  const defaultWeight = 20;
+  let setCounters = {};
+
+  let allExercises = null;
+
+  let timerInterval = null;
+  let timerSeconds = 0;
+  let timerRunning = false;
+  let timerDirection = 'up';
+
+  let audioContext = null;
+
+  function initAudio() {
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+  }
+
+  function playBeep() {
+    initAudio();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    oscillator.frequency.value = 800;
+    oscillator.type = 'sine';
+    gainNode.gain.value = 0.3;
+
+    oscillator.start();
+
+    setTimeout(() => { gainNode.gain.value = 0; }, 150);
+    setTimeout(() => { gainNode.gain.value = 0.3; }, 250);
+    setTimeout(() => { gainNode.gain.value = 0; }, 400);
+    setTimeout(() => { gainNode.gain.value = 0.3; }, 500);
+    setTimeout(() => { gainNode.gain.value = 0; }, 650);
+    setTimeout(() => { oscillator.stop(); }, 700);
+  }
+
+  function formatTime(seconds) {
+    const mins = Math.floor(Math.abs(seconds) / 60);
+    const secs = Math.abs(seconds) % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  function updateTimerDisplay() {
+    const display = document.getElementById('timer-display');
+    const timer = document.getElementById('rest-timer');
+    display.textContent = formatTime(timerSeconds);
+
+    if (timerDirection === 'down') {
+      timer.classList.add('active');
+      if (timerSeconds <= 0) {
+        timer.classList.remove('active');
+        timer.classList.add('warning');
+      } else {
+        timer.classList.remove('warning');
+      }
+    } else {
+      timer.classList.remove('active', 'warning');
+    }
+  }
+
+  function startRestTimer() {
+    initAudio();
+    stopTimer();
+    timerSeconds = REST_TIME;
+    timerDirection = 'down';
+    timerRunning = true;
+    updateTimerDisplay();
+
+    timerInterval = setInterval(() => {
+      timerSeconds--;
+      updateTimerDisplay();
+
+      if (timerSeconds === 0) {
+        playBeep();
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('Rest Complete!', { body: 'Time to start your next set!' });
+        }
+      }
+    }, 1000);
+  }
+
+  function stopTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    timerRunning = false;
+    timerDirection = 'up';
+    timerSeconds = 0;
+    updateTimerDisplay();
+  }
+
+  function toggleTimer() {
+    if (timerRunning) {
+      stopTimer();
+    } else {
+      startRestTimer();
+    }
+  }
+
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+
+  exercisesData.forEach(ex => {
+    setCounters[ex.exercise_id] = ex.templateSets.length;
+  });
+
+  window.adjustInput = function(btn, delta) {
+    const spinner = btn.closest('.input-spinner');
+    const input = spinner.querySelector('input');
+    const currentVal = parseFloat(input.value) || 0;
+    const step = Math.abs(delta);
+    const newVal = Math.max(0, currentVal + delta);
+    input.value = step === 2.5 ? newVal.toFixed(1) : Math.round(newVal);
+    saveProgress();
+  };
+
+  window.toggleTimer = function() {
+    if (timerRunning) {
+      stopTimer();
+    } else {
+      startRestTimer();
+    }
+  };
+
+  window.openExerciseModal = async function() {
+    document.getElementById('exercise-modal').classList.add('active');
+    document.getElementById('exercise-search').value = '';
+
+    if (!allExercises) {
+      const res = await fetch('/api/exercises');
+      allExercises = await res.json();
+      renderExerciseList();
+    }
+    window.filterExercises('');
+  };
+
+  window.closeExerciseModal = function() {
+    document.getElementById('exercise-modal').classList.remove('active');
+  };
+
+  function renderExerciseList() {
+    const container = document.getElementById('exercise-list');
+    const grouped = {};
+    allExercises.forEach(ex => {
+      if (!grouped[ex.muscle_group]) grouped[ex.muscle_group] = [];
+      grouped[ex.muscle_group].push(ex);
+    });
+
+    container.innerHTML = Object.entries(grouped).map(([muscle, exs]) => `
+      <div class="muscle-section" data-muscle="${muscle}">
+        <div class="muscle-section-title">${muscle.replace('_', ' ')}</div>
+        <div class="exercise-gallery">
+          ${exs.map(ex => `
+            <button type="button" class="exercise-chip exercise-option"
+                    data-id="${ex.id}" data-name="${ex.name}" data-muscle="${ex.muscle_group}"
+                    onclick="addExerciseToWorkout(${ex.id}, '${ex.name.replace(/'/g, "\\'")}', '${ex.muscle_group}')">
+              ${ex.name}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function fuzzyMatch(text, query) {
+    text = text.toLowerCase();
+    query = query.toLowerCase();
+    let ti = 0;
+    for (let qi = 0; qi < query.length; qi++) {
+      const char = query[qi];
+      while (ti < text.length && text[ti] !== char) ti++;
+      if (ti >= text.length) return false;
+      ti++;
+    }
+    return true;
+  }
+
+  window.filterExercises = function(query) {
+    const q = query.toLowerCase().trim();
+    document.querySelectorAll('.exercise-option').forEach(el => {
+      const name = el.dataset.name;
+      const muscle = el.dataset.muscle.replace('_', ' ');
+      const matches = !q || fuzzyMatch(name, q) || fuzzyMatch(muscle, q) ||
+                     name.toLowerCase().includes(q) || muscle.toLowerCase().includes(q);
+      el.style.display = matches ? 'inline-block' : 'none';
+    });
+    document.querySelectorAll('.muscle-section').forEach(section => {
+      const visible = section.querySelectorAll('.exercise-option[style="display: inline-block;"], .exercise-option:not([style])');
+      section.style.display = visible.length > 0 ? 'block' : 'none';
+    });
+  };
+
+  window.addExerciseToWorkout = function(id, name, muscle) {
+    if (exercisesData.find(e => e.exercise_id === id)) {
+      window.closeExerciseModal();
+      return;
+    }
+
+    const newEx = {
+      exercise_id: id,
+      exercise_name: name,
+      lastSets: [],
+      templateSets: [{ reps: 10, weight: defaultWeight }, { reps: 10, weight: defaultWeight }, { reps: 10, weight: defaultWeight }]
+    };
+    exercisesData.push(newEx);
+    setCounters[id] = 3;
+
+    const container = document.getElementById('exercises-container');
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.marginBottom = '16px';
+    card.dataset.exerciseCard = id;
+    card.innerHTML = `
+      <div class="card-title">${name}</div>
+      <div class="sets-container" data-exercise="${id}" style="margin-top: 12px;">
+        ${newEx.templateSets.map((set, i) => `
+          <div class="set-row" data-set-index="${i}">
+            <span class="set-number">${i + 1}</span>
+            <div class="input-spinner">
+              <button type="button" class="spinner-btn" onclick="adjustInput(this, -1)">−</button>
+              <input type="number" name="reps_${id}_${i}" value="${set.reps}" onfocus="this.select()" oninput="saveProgress()">
+              <button type="button" class="spinner-btn" onclick="adjustInput(this, 1)">+</button>
+            </div>
+            <span class="set-x">×</span>
+            <div class="input-spinner">
+              <button type="button" class="spinner-btn" onclick="adjustInput(this, -2.5)">−</button>
+              <input type="number" name="weight_${id}_${i}" value="${set.weight}" step="2.5" onfocus="this.select()" oninput="saveProgress()">
+              <button type="button" class="spinner-btn" onclick="adjustInput(this, 2.5)">+</button>
+            </div>
+            <span class="set-unit">kg</span>
+            <button type="button" class="set-check" onclick="toggleSetComplete(this)"></button>
+          </div>
+        `).join('')}
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" style="margin-top: 8px;"
+              onclick="addSetToExercise(${id})">
+        + Add Set
+      </button>
+    `;
+    container.appendChild(card);
+
+    window.closeExerciseModal();
+    saveProgress();
+  };
+
+  function restoreProgress() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return;
+
+    try {
+      const data = JSON.parse(saved);
+
+      Object.entries(data.inputs || {}).forEach(([name, value]) => {
+        const input = document.querySelector(`[name="${name}"]`);
+        if (input) input.value = value;
+      });
+
+      (data.completedSets || []).forEach(selector => {
+        const btn = document.querySelector(selector);
+        if (btn) btn.classList.add('completed');
+      });
+
+      if (data.addedSets) {
+        Object.entries(data.addedSets).forEach(([exerciseId, sets]) => {
+          const container = document.querySelector(`.sets-container[data-exercise="${exerciseId}"]`);
+          if (!container) return;
+
+          sets.forEach((set, i) => {
+            const setNum = setCounters[exerciseId]++;
+            const setRow = document.createElement('div');
+            setRow.className = 'set-row';
+            setRow.dataset.setIndex = setNum;
+            setRow.innerHTML = `
+              <span class="set-number">${setNum + 1}</span>
+              <div class="input-spinner">
+                <button type="button" class="spinner-btn" onclick="adjustInput(this, -1)">−</button>
+                <input type="number" name="reps_${exerciseId}_${setNum}"
+                       value="${set.reps || ''}" onfocus="this.select()" oninput="saveProgress()">
+                <button type="button" class="spinner-btn" onclick="adjustInput(this, 1)">+</button>
+              </div>
+              <span class="set-x">×</span>
+              <div class="input-spinner">
+                <button type="button" class="spinner-btn" onclick="adjustInput(this, -2.5)">−</button>
+                <input type="number" name="weight_${exerciseId}_${setNum}"
+                       value="${set.weight || ''}" step="2.5" onfocus="this.select()" oninput="saveProgress()">
+                <button type="button" class="spinner-btn" onclick="adjustInput(this, 2.5)">+</button>
+              </div>
+              <span class="set-unit">kg</span>
+              <button type="button" class="set-check ${set.completed ? 'completed' : ''}" onclick="toggleSetComplete(this)"></button>
+            `;
+            container.appendChild(setRow);
+          });
+        });
+      }
+    } catch (e) {
+      console.error('Error restoring workout progress:', e);
+    }
+  }
+
+  window.saveProgress = function() {
+    const form = document.getElementById('workout-form');
+    const formData = new FormData(form);
+    const inputs = {};
+
+    for (const [key, value] of formData.entries()) {
+      if (key !== 'template_id') {
+        inputs[key] = value;
+      }
+    }
+
+    const completedSets = [];
+    document.querySelectorAll('.set-check.completed').forEach(btn => {
+      const row = btn.closest('.set-row');
+      const container = row.closest('.sets-container');
+      const exerciseId = container.dataset.exercise;
+      const setIndex = row.dataset.setIndex;
+      completedSets.push(`.sets-container[data-exercise="${exerciseId}"] .set-row[data-set-index="${setIndex}"] .set-check`);
+    });
+
+    const addedSets = {};
+    exercisesData.forEach(ex => {
+      const container = document.querySelector(`.sets-container[data-exercise="${ex.exercise_id}"]`);
+      const rows = container.querySelectorAll('.set-row');
+      if (rows.length > ex.templateSets.length) {
+        addedSets[ex.exercise_id] = [];
+        for (let i = ex.templateSets.length; i < rows.length; i++) {
+          const row = rows[i];
+          const repsInput = row.querySelector(`[name^="reps_"]`);
+          const weightInput = row.querySelector(`[name^="weight_"]`);
+          const checkBtn = row.querySelector('.set-check');
+          addedSets[ex.exercise_id].push({
+            reps: repsInput?.value || '',
+            weight: weightInput?.value || '',
+            completed: checkBtn?.classList.contains('completed') || false
+          });
+        }
+      }
+    });
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      inputs,
+      completedSets,
+      addedSets,
+      savedAt: Date.now()
+    }));
+  }
+
+  window.toggleSetComplete = function(btn) {
+    btn.classList.toggle('completed');
+    saveProgress();
+
+    if (btn.classList.contains('completed')) {
+      startRestTimer();
+    }
+  };
+
+  window.addSetToExercise = function(exerciseId) {
+    const container = document.querySelector(`.sets-container[data-exercise="${exerciseId}"]`);
+    if (!setCounters[exerciseId]) setCounters[exerciseId] = 0;
+    const setNum = setCounters[exerciseId]++;
+    const ex = exercisesData.find(e => e.exercise_id === exerciseId);
+    const defaultReps = ex?.templateSets?.[0]?.reps || 10;
+
+    const setRow = document.createElement('div');
+    setRow.className = 'set-row';
+    setRow.dataset.setIndex = setNum;
+    setRow.innerHTML = `
+      <span class="set-number">${setNum + 1}</span>
+      <div class="input-spinner">
+        <button type="button" class="spinner-btn" onclick="adjustInput(this, -1)">−</button>
+        <input type="number" name="reps_${exerciseId}_${setNum}"
+               placeholder="${defaultReps}" onfocus="this.select()" oninput="saveProgress()">
+        <button type="button" class="spinner-btn" onclick="adjustInput(this, 1)">+</button>
+      </div>
+      <span class="set-x">×</span>
+      <div class="input-spinner">
+        <button type="button" class="spinner-btn" onclick="adjustInput(this, -2.5)">−</button>
+        <input type="number" name="weight_${exerciseId}_${setNum}"
+               placeholder="0" step="2.5" onfocus="this.select()" oninput="saveProgress()">
+        <button type="button" class="spinner-btn" onclick="adjustInput(this, 2.5)">+</button>
+      </div>
+      <span class="set-unit">kg</span>
+      <button type="button" class="set-check" onclick="toggleSetComplete(this)"></button>
+    `;
+    container.appendChild(setRow);
+    saveProgress();
+  };
+
+  window.cancelWorkout = function() {
+    if (confirm('Are you sure you want to cancel this workout? Progress will be lost.')) {
+      stopTimer();
+      localStorage.removeItem(STORAGE_KEY);
+      htmx.ajax('GET', '/pages/workouts', { target: '#content', swap: 'innerHTML transition:true' });
+    }
+  };
+
+  window.finishWorkout = async function() {
+    stopTimer();
+
+    const createRes = await fetch('/api/workouts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template_id: templateId })
+    });
+
+    if (!createRes.ok) {
+      alert('Failed to save workout');
+      return;
+    }
+
+    const { workout_id: workoutId } = await createRes.json();
+
+    const form = document.getElementById('workout-form');
+    const formData = new FormData(form);
+    const sets = [];
+
+    for (const [key, value] of formData.entries()) {
+      if (key.startsWith('reps_') && value) {
+        const parts = key.split('_');
+        const exerciseId = parseInt(parts[1]);
+        const setNum = parseInt(parts[2]);
+        const weight = formData.get(`weight_${exerciseId}_${setNum}`);
+
+        if (weight) {
+          sets.push({
+            exercise_id: exerciseId,
+            set_number: setNum + 1,
+            weight: parseFloat(weight),
+            reps: parseInt(value)
+          });
+        }
+      }
+    }
+
+    const response = await fetch('/api/workouts/' + workoutId + '/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sets })
+    });
+
+    if (response.ok) {
+      localStorage.removeItem(STORAGE_KEY);
+      htmx.ajax('GET', '/pages/home', { target: '#content', swap: 'innerHTML transition:true' });
+      document.querySelector('[data-page="home"]').click();
+    }
+  };
+
+  restoreProgress();
+})();
+</script>

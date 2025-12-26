@@ -1,0 +1,210 @@
+<script>
+(function() {
+  let selectedExercises = <%~ JSON.stringify(it.exercises || []) %>;
+  let draggedIndex = null;
+  let restTimeSeconds = <%= it.restTime || 180 %>;
+  const defaultWeight = 20;
+
+  function formatRestTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return mins + ':' + secs.toString().padStart(2, '0');
+  }
+
+  window.adjustRestTime = function(delta) {
+    restTimeSeconds = Math.max(15, Math.min(600, restTimeSeconds + delta));
+    document.getElementById('rest-time-display').textContent = formatRestTime(restTimeSeconds);
+    document.getElementById('rest-time-input').value = restTimeSeconds;
+  };
+
+  window.openExerciseModal = function() {
+    document.getElementById('exercise-modal').classList.add('active');
+    document.getElementById('exercise-search').value = '';
+    window.filterExercises('');
+  };
+
+  window.closeExerciseModal = function() {
+    document.getElementById('exercise-modal').classList.remove('active');
+  };
+
+  window.addExercise = function(id, name, muscle) {
+    if (selectedExercises.find(e => e.id === id)) {
+      window.closeExerciseModal();
+      return;
+    }
+
+    selectedExercises.push({
+      id,
+      name,
+      muscle,
+      increment: 2.5,
+      sets: [
+        { reps: 10, weight: defaultWeight },
+        { reps: 10, weight: defaultWeight },
+        { reps: 10, weight: defaultWeight }
+      ]
+    });
+    updateExerciseList();
+    window.closeExerciseModal();
+  };
+
+  window.removeExercise = function(id) {
+    selectedExercises = selectedExercises.filter(e => e.id !== id);
+    updateExerciseList();
+  };
+
+  window.updateSetValue = function(exerciseId, setIndex, field, value) {
+    const ex = selectedExercises.find(e => e.id === exerciseId);
+    if (ex && ex.sets[setIndex]) {
+      ex.sets[setIndex][field] = parseFloat(value) || 0;
+      updateHiddenInput();
+    }
+  };
+
+  window.addSet = function(exerciseId) {
+    const ex = selectedExercises.find(e => e.id === exerciseId);
+    if (ex) {
+      const lastSet = ex.sets[ex.sets.length - 1] || { reps: 10, weight: defaultWeight };
+      ex.sets.push({ reps: lastSet.reps, weight: lastSet.weight });
+      updateExerciseList();
+    }
+  };
+
+  window.removeSet = function(exerciseId, setIndex) {
+    const ex = selectedExercises.find(e => e.id === exerciseId);
+    if (ex && ex.sets.length > 1) {
+      ex.sets.splice(setIndex, 1);
+      updateExerciseList();
+    }
+  };
+
+  window.updateIncrement = function(exerciseId, value) {
+    const ex = selectedExercises.find(e => e.id === exerciseId);
+    if (ex) {
+      ex.increment = parseFloat(value) || 2.5;
+      updateHiddenInput();
+    }
+  };
+
+  function updateHiddenInput() {
+    document.getElementById('exercises-input').value = JSON.stringify(
+      selectedExercises.map(e => ({ id: e.id, sets: e.sets, increment: e.increment || 2.5 }))
+    );
+  }
+
+  function updateExerciseList() {
+    const container = document.getElementById('selected-exercises');
+    container.innerHTML = selectedExercises.map((ex, i) => `
+      <div class="exercise-item-card" draggable="true" data-index="${i}"
+           ondragstart="handleDragStart(event, ${i})"
+           ondragover="handleDragOver(event)"
+           ondrop="handleDrop(event, ${i})"
+           ondragend="handleDragEnd(event)">
+        <div class="exercise-item-header">
+          <span class="exercise-item-grip" style="cursor: grab;">☰</span>
+          <span class="exercise-item-name">${ex.name}</span>
+          <button type="button" class="exercise-item-remove" onclick="removeExercise(${ex.id})">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div class="exercise-sets-header">
+          <span class="set-col-label">Set</span>
+          <span class="set-col-label">Reps</span>
+          <span class="set-col-label">kg</span>
+          <span class="set-col-label"></span>
+        </div>
+        <div class="exercise-sets">
+          ${ex.sets.map((set, si) => `
+            <div class="exercise-set-row">
+              <span class="set-number">${si + 1}</span>
+              <input type="number" value="${set.reps}" min="1" max="100"
+                     onchange="updateSetValue(${ex.id}, ${si}, 'reps', this.value)"
+                     onfocus="this.select()">
+              <input type="number" value="${set.weight}" min="0" step="0.5"
+                     onchange="updateSetValue(${ex.id}, ${si}, 'weight', this.value)"
+                     onfocus="this.select()">
+              <button type="button" class="set-remove-btn" onclick="removeSet(${ex.id}, ${si})"
+                      ${ex.sets.length <= 1 ? 'disabled' : ''}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+          `).join('')}
+        </div>
+        <button type="button" class="add-set-btn" onclick="addSet(${ex.id})">+ Add Set</button>
+        <div class="increment-row">
+          <span class="increment-label">Auto-increment</span>
+          <div class="increment-input">
+            <input type="number" value="${ex.increment || 2.5}" min="0" max="20" step="0.5"
+                   onchange="updateIncrement(${ex.id}, this.value)">
+            <span>kg</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    updateHiddenInput();
+  }
+
+  window.handleDragStart = function(e, index) {
+    draggedIndex = index;
+    e.target.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  window.handleDragOver = function(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  window.handleDrop = function(e, dropIndex) {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === dropIndex) return;
+
+    const item = selectedExercises[draggedIndex];
+    selectedExercises.splice(draggedIndex, 1);
+    selectedExercises.splice(dropIndex, 0, item);
+    updateExerciseList();
+  };
+
+  window.handleDragEnd = function(e) {
+    e.target.classList.remove('dragging');
+    draggedIndex = null;
+  };
+
+  function fuzzyMatch(text, query) {
+    text = text.toLowerCase();
+    query = query.toLowerCase();
+    let ti = 0;
+    for (let qi = 0; qi < query.length; qi++) {
+      const char = query[qi];
+      while (ti < text.length && text[ti] !== char) ti++;
+      if (ti >= text.length) return false;
+      ti++;
+    }
+    return true;
+  }
+
+  window.filterExercises = function(query) {
+    const q = query.toLowerCase().trim();
+    document.querySelectorAll('.exercise-option').forEach(el => {
+      const name = el.dataset.name;
+      const muscle = el.dataset.muscle.replace('_', ' ');
+      const matches = !q || fuzzyMatch(name, q) || fuzzyMatch(muscle, q) ||
+                     name.toLowerCase().includes(q) || muscle.toLowerCase().includes(q);
+      el.style.display = matches ? 'inline-block' : 'none';
+    });
+    document.querySelectorAll('.muscle-section').forEach(section => {
+      const visible = section.querySelectorAll('.exercise-option[style="display: inline-block;"], .exercise-option:not([style])');
+      section.style.display = visible.length > 0 ? 'block' : 'none';
+    });
+  };
+
+  updateExerciseList();
+})();
+</script>

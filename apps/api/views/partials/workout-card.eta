@@ -1,0 +1,21 @@
+<div class="workout-card<% if (it.highlighted) { %> highlighted<% } %>"
+     hx-get="/pages/workouts/<%= it.id %><% if (it.active) { %>/active<% } %>"
+     hx-target="#content"
+     hx-swap="innerHTML transition:true"
+     <% if (it.pushUrl !== false) { %>hx-push-url="/workouts/<%= it.id %><% if (it.active) { %>/active<% } %>"<% } %>>
+  <div class="workout-card-info">
+    <div class="workout-card-name"><%= it.name %></div>
+    <div class="workout-card-meta"><%= it.exercises || 'No exercises' %></div>
+    <% if (it.scheduledDays) { %>
+    <div class="workout-card-days"><%= it.scheduledDays %></div>
+    <% } %>
+  </div>
+  <% if (it.showStart) { %>
+  <button class="start-btn<% if (it.secondary) { %> secondary<% } %>"
+          hx-get="/pages/workouts/<%= it.id %>/active"
+          hx-target="#content"
+          hx-swap="innerHTML transition:true"
+          hx-push-url="/workouts/<%= it.id %>/active"
+          onclick="event.stopPropagation()"><%= it.startLabel || 'Start' %></button>
+  <% } %>
+</div>

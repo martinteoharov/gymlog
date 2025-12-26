@@ -1,0 +1,4 @@
+<div class="stat-card">
+  <div class="stat-value"><%= it.value %></div>
+  <div class="stat-label"><%= it.label %></div>
+</div>

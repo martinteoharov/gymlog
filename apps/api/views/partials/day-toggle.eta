@@ -1,0 +1,9 @@
+<div class="day-toggle">
+  <% it.days.forEach((day, i) => { %>
+  <input type="checkbox" name="days" value="<%= i %>" id="day-<%= i %>" class="day-checkbox"
+         <% if (it.selected && it.selected.includes(i)) { %>checked<% } %>
+         <% if (it.taken && it.taken.has(i)) { %>disabled<% } %>>
+  <label for="day-<%= i %>" class="day-label<% if (it.taken && it.taken.has(i)) { %> taken<% } %>"
+         <% if (it.taken && it.taken.get(i)) { %>title="Used by <%= it.taken.get(i) %>"<% } %>><%= day %></label>
+  <% }) %>
+</div>

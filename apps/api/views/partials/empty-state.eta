@@ -1,0 +1,9 @@
+<div class="empty-state">
+  <% if (it.icon) { %>
+  <%~ it.icon %>
+  <% } %>
+  <% if (it.title) { %>
+  <div class="empty-state-title"><%= it.title %></div>
+  <% } %>
+  <div class="empty-state-text"><%= it.text %></div>
+</div>

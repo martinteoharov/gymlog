@@ -1,0 +1,20 @@
+<div class="set-row" data-set-index="<%= it.index %>">
+  <span class="set-number"><%= it.index + 1 %></span>
+  <div class="input-spinner">
+    <button type="button" class="spinner-btn" onclick="adjustInput(this, -1)">−</button>
+    <input type="number" name="reps_<%= it.exerciseId %>_<%= it.index %>"
+           value="<%= it.reps %>" <% if (!it.value) { %>placeholder="<%= it.reps %>"<% } %>
+           onfocus="this.select()" oninput="saveProgress()">
+    <button type="button" class="spinner-btn" onclick="adjustInput(this, 1)">+</button>
+  </div>
+  <span class="set-x">×</span>
+  <div class="input-spinner">
+    <button type="button" class="spinner-btn" onclick="adjustInput(this, -2.5)">−</button>
+    <input type="number" name="weight_<%= it.exerciseId %>_<%= it.index %>"
+           value="<%= it.weight %>" step="2.5" <% if (!it.value) { %>placeholder="0"<% } %>
+           onfocus="this.select()" oninput="saveProgress()">
+    <button type="button" class="spinner-btn" onclick="adjustInput(this, 2.5)">+</button>
+  </div>
+  <span class="set-unit">kg</span>
+  <button type="button" class="set-check" onclick="toggleSetComplete(this)"></button>
+</div>

@@ -1,0 +1,10 @@
+<div class="rest-time-picker">
+  <div class="time-spinner">
+    <button type="button" class="spinner-btn" onclick="adjustRestTime(-15)">−</button>
+    <div class="time-display">
+      <span id="rest-time-display"><%= it.display %></span>
+    </div>
+    <button type="button" class="spinner-btn" onclick="adjustRestTime(15)">+</button>
+  </div>
+  <input type="hidden" name="rest_time" id="rest-time-input" value="<%= it.value %>">
+</div>

@@ -1,0 +1,37 @@
+<div id="exercise-modal" class="modal-overlay" onclick="if(event.target === this) closeExerciseModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title">Add Exercise</h3>
+      <button type="button" class="modal-close" onclick="closeExerciseModal()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-search">
+      <input type="text" class="form-input" placeholder="Search exercises..."
+             id="exercise-search" oninput="filterExercises(this.value)">
+    </div>
+    <div class="modal-body">
+      <div id="exercise-list">
+        <% if (it.grouped) { %>
+        <% Object.entries(it.grouped).forEach(([muscle, exercises]) => { %>
+        <div class="muscle-section" data-muscle="<%= muscle %>">
+          <div class="muscle-section-title"><%= muscle.replace('_', ' ') %></div>
+          <div class="exercise-gallery">
+            <% exercises.forEach(ex => { %>
+            <button type="button" class="exercise-chip exercise-option"
+                    data-id="<%= ex.id %>" data-name="<%= ex.name %>" data-muscle="<%= ex.muscle_group %>"
+                    onclick="<%= it.onSelect || 'addExercise' %>(<%= ex.id %>, '<%= ex.name.replace(/'/g, "\\'") %>', '<%= ex.muscle_group %>')">
+              <%= ex.name %>
+            </button>
+            <% }) %>
+          </div>
+        </div>
+        <% }) %>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</div>

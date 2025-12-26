@@ -451,10 +451,21 @@ body {
     font-weight: 600;
     cursor: pointer;
     transition: all var(--transition);
+    flex-shrink: 0;
 }
 
 .start-btn:hover {
     background: var(--accent-dark);
+}
+
+.start-btn.secondary {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.start-btn.secondary:hover {
+    background: var(--accent);
+    color: var(--bg-primary);
 }
 
 /* Lists */
@@ -1090,6 +1101,17 @@ body {
 .day-checkbox:checked + .day-label {
     background: var(--accent);
     color: var(--bg-primary);
+}
+
+.day-label.taken {
+    opacity: 0.4;
+    cursor: not-allowed;
+    text-decoration: line-through;
+}
+
+.day-checkbox:disabled + .day-label {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
 
 /* Rest Time Picker */
