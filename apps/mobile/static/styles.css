@@ -23,10 +23,21 @@
     -webkit-tap-highlight-color: transparent;
 }
 
+/* Improve touch responsiveness globally */
+button, a, input, select, textarea, [role="button"] {
+    touch-action: manipulation;
+}
+
 html,
 body {
     height: 100%;
     overflow: hidden;
+}
+
+/* iOS Safe Area Support */
+html {
+    /* Ensure proper background behind safe areas */
+    background: var(--bg-primary);
 }
 
 body {
@@ -44,6 +55,7 @@ body {
     height: 100%;
     max-width: 480px;
     margin: 0 auto;
+    padding-top: env(safe-area-inset-top);
 }
 
 /* Header */
@@ -84,9 +96,10 @@ body {
     overflow-y: auto;
     overflow-x: hidden;
     padding: 16px;
-    padding-bottom: 100px;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE/Edge */
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 
 .content::-webkit-scrollbar {
@@ -119,7 +132,8 @@ body {
     display: flex;
     justify-content: space-around;
     align-items: center;
-    padding: 8px 16px 24px;
+    padding: 8px 16px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
     background: var(--bg-primary);
     border-top: 1px solid var(--bg-secondary);
     position: fixed;
@@ -146,6 +160,9 @@ body {
     transition: all var(--transition);
     font-size: 11px;
     text-decoration: none;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 .nav-item svg {
@@ -391,6 +408,9 @@ body {
     border-radius: var(--border-radius);
     cursor: pointer;
     transition: all var(--transition);
+    touch-action: manipulation; /* Prevent double-tap zoom, improve tap response */
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 .btn-primary {
@@ -484,6 +504,19 @@ body {
 .list-item-subtitle {
     font-size: 13px;
     color: var(--text-secondary);
+}
+
+/* Programme Link */
+.programme-link {
+    display: inline-block;
+    font-size: 13px;
+    color: var(--accent);
+    text-decoration: none;
+    margin-bottom: 16px;
+}
+
+.programme-link:hover {
+    text-decoration: underline;
 }
 
 /* Forms */
@@ -1077,8 +1110,8 @@ body {
 /* Checkbox Toggle for Days */
 .day-toggle {
     display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
+    gap: 6px;
+    flex-wrap: nowrap;
 }
 
 .day-checkbox {
@@ -1086,14 +1119,16 @@ body {
 }
 
 .day-label {
-    padding: 8px 12px;
-    font-size: 13px;
+    flex: 1;
+    padding: 8px 0;
+    font-size: 12px;
     font-weight: 500;
     background: var(--bg-tertiary);
     border-radius: var(--border-radius-sm);
     color: var(--text-secondary);
     cursor: pointer;
     transition: all var(--transition);
+    text-align: center;
 }
 
 .day-checkbox:checked + .day-label {
@@ -1219,11 +1254,22 @@ body {
 }
 
 /* Workout Duration */
+.workout-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .workout-duration {
     font-size: 13px;
     font-weight: 500;
     color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
+}
+
+.meta-separator {
+    color: var(--text-muted);
+    font-size: 13px;
 }
 
 /* Active Workout Set Row - Enhanced */
@@ -1470,7 +1516,7 @@ body {
 /* Sticky Bottom Button Container */
 .sticky-bottom {
     position: fixed;
-    bottom: 88px;
+    bottom: calc(70px + env(safe-area-inset-bottom));
     left: 0;
     right: 0;
     max-width: 480px;

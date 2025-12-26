@@ -36,7 +36,7 @@
 <div class="page">
 	<div class="auth-container">
 		<div class="auth-header">
-			<h1 class="auth-title">GymLog</h1>
+			<h1 class="auth-title">OpenRep</h1>
 			<p class="auth-subtitle">Track your workouts</p>
 		</div>
 

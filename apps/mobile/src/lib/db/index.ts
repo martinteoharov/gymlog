@@ -9,9 +9,19 @@ export interface Exercise {
 	updated_at?: number;
 }
 
+export interface Programme {
+	id: number;
+	user_id: number;
+	name: string;
+	is_active: number; // 0 or 1
+	created_at: string;
+	updated_at?: number;
+}
+
 export interface Template {
 	id: number;
 	user_id: number;
+	programme_id: number | null;
 	name: string;
 	rest_time: number;
 	created_at: string;
@@ -89,6 +99,7 @@ export interface ActiveWorkoutState {
 
 class GymLogDatabase extends Dexie {
 	exercises!: Table<Exercise, number>;
+	programmes!: Table<Programme, number>;
 	templates!: Table<Template, number>;
 	templateExercises!: Table<TemplateExercise, number>;
 	schedule!: Table<Schedule, number>;
@@ -105,6 +116,20 @@ class GymLogDatabase extends Dexie {
 			// Primary key, then indexed fields
 			exercises: 'id, muscle_group, updated_at',
 			templates: 'id, user_id, updated_at',
+			templateExercises: 'id, template_id, exercise_id, updated_at',
+			schedule: 'id, user_id, day_of_week, template_id, updated_at',
+			workouts: 'id, user_id, template_id, started_at, updated_at',
+			sets: 'id, workout_id, exercise_id, updated_at',
+			progression: 'id, user_id, exercise_id, updated_at',
+			outbox: '++id, table, recordId, createdAt',
+			activeWorkout: '++id, template_id'
+		});
+
+		// Version 2: Add programmes table and programme_id to templates
+		this.version(2).stores({
+			exercises: 'id, muscle_group, updated_at',
+			programmes: 'id, user_id, is_active, updated_at',
+			templates: 'id, user_id, programme_id, updated_at',
 			templateExercises: 'id, template_id, exercise_id, updated_at',
 			schedule: 'id, user_id, day_of_week, template_id, updated_at',
 			workouts: 'id, user_id, template_id, started_at, updated_at',
@@ -311,6 +336,7 @@ export async function hasActiveWorkout(): Promise<boolean> {
 export interface TemplateWithExercises {
 	id: number;
 	user_id: number;
+	programme_id: number | null;
 	name: string;
 	rest_time: number;
 	created_at: string;
@@ -406,4 +432,105 @@ export async function getScheduleConflicts(
 	}
 
 	return conflicts;
+}
+
+// ============================================
+// Programme Helpers
+// ============================================
+
+/**
+ * Get the active programme for a user
+ */
+export async function getActiveProgramme(userId: number): Promise<Programme | undefined> {
+	return db.programmes
+		.where('user_id')
+		.equals(userId)
+		.filter(p => p.is_active === 1)
+		.first();
+}
+
+/**
+ * Get all programmes for a user
+ */
+export async function getUserProgrammes(userId: number): Promise<Programme[]> {
+	return db.programmes.where('user_id').equals(userId).toArray();
+}
+
+/**
+ * Get a programme with its templates
+ */
+export async function getProgrammeWithTemplates(programmeId: number): Promise<{
+	programme: Programme;
+	templates: Template[];
+} | null> {
+	const programme = await db.programmes.get(programmeId);
+	if (!programme) return null;
+
+	const templates = await db.templates
+		.where('programme_id')
+		.equals(programmeId)
+		.toArray();
+
+	return { programme, templates };
+}
+
+/**
+ * Get templates for a programme with full details
+ */
+export async function getProgrammeTemplatesWithDetails(
+	programmeId: number
+): Promise<TemplateWithExercises[]> {
+	const templates = await db.templates
+		.where('programme_id')
+		.equals(programmeId)
+		.toArray();
+
+	if (templates.length === 0) return [];
+
+	const templateIds = templates.map(t => t.id);
+
+	const [schedules, allTemplateExercises, exercises] = await Promise.all([
+		db.schedule.toArray(),
+		db.templateExercises.where('template_id').anyOf(templateIds).toArray(),
+		db.exercises.toArray()
+	]);
+
+	const exerciseMap = new Map(exercises.map(e => [e.id, e]));
+
+	const scheduleMap = new Map<number, number[]>();
+	for (const s of schedules) {
+		if (s.template_id && templateIds.includes(s.template_id)) {
+			const days = scheduleMap.get(s.template_id) || [];
+			days.push(s.day_of_week);
+			scheduleMap.set(s.template_id, days);
+		}
+	}
+
+	const templateExerciseMap = new Map<number, TemplateExercise[]>();
+	for (const te of allTemplateExercises) {
+		const list = templateExerciseMap.get(te.template_id) || [];
+		list.push(te);
+		templateExerciseMap.set(te.template_id, list);
+	}
+
+	return templates.map(t => {
+		const templateExs = (templateExerciseMap.get(t.id) || [])
+			.sort((a, b) => a.sort_order - b.sort_order);
+
+		return {
+			...t,
+			exercises: templateExs.map(te => {
+				const exercise = exerciseMap.get(te.exercise_id);
+				return {
+					exercise_id: te.exercise_id,
+					exercise_name: exercise?.name || 'Unknown',
+					muscle_group: exercise?.muscle_group || '',
+					sort_order: te.sort_order,
+					sets_data: te.sets_data,
+					increment: te.increment
+				};
+			}),
+			scheduledDays: scheduleMap.get(t.id) || []
+		};
+	});
 }

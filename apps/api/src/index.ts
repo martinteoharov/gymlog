@@ -579,6 +579,188 @@ app.delete("/api/templates/:id", (c) => {
   return c.json({ success: true });
 });
 
+// ============== PROGRAMMES ==============
+
+interface Programme {
+  id: number;
+  user_id: number;
+  name: string;
+  is_active: number;
+  created_at: string;
+}
+
+// Get all programmes for user
+app.get("/api/programmes", (c) => {
+  const user = requireAuth(c);
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const programmes = db
+    .query(`SELECT * FROM programmes WHERE user_id = ? ORDER BY is_active DESC, name`)
+    .all(user.id) as Programme[];
+
+  // Include template count for each programme
+  const result = programmes.map((prog) => {
+    const templateCount = db
+      .query(`SELECT COUNT(*) as count FROM templates WHERE programme_id = ?`)
+      .get(prog.id) as { count: number };
+    return {
+      ...prog,
+      template_count: templateCount.count,
+    };
+  });
+
+  return c.json(result);
+});
+
+// Get single programme with templates
+app.get("/api/programmes/:id", (c) => {
+  const user = requireAuth(c);
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const id = parseInt(c.req.param("id"));
+
+  const programme = db
+    .query("SELECT * FROM programmes WHERE id = ? AND user_id = ?")
+    .get(id, user.id) as Programme | null;
+
+  if (!programme) {
+    return c.json({ error: "Programme not found" }, 404);
+  }
+
+  const templates = db
+    .query(`SELECT * FROM templates WHERE programme_id = ? ORDER BY name`)
+    .all(id) as Template[];
+
+  // Get exercises for each template
+  const templatesWithExercises = templates.map((template) => {
+    const exercises = db
+      .query(
+        `SELECT te.exercise_id, e.name as exercise_name FROM template_exercises te
+         JOIN exercises e ON te.exercise_id = e.id
+         WHERE te.template_id = ? ORDER BY te.sort_order`,
+      )
+      .all(template.id) as { exercise_id: number; exercise_name: string }[];
+
+    return {
+      ...template,
+      exercises: exercises.map((e) => ({
+        exercise_id: e.exercise_id,
+        exercise_name: e.exercise_name,
+      })),
+    };
+  });
+
+  return c.json({
+    ...programme,
+    templates: templatesWithExercises,
+  });
+});
+
+// Create programme
+app.post("/api/programmes", async (c) => {
+  const user = requireAuth(c);
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const body = await c.req.json();
+  const { name, is_active = 0 } = body;
+
+  if (!name) {
+    return c.json({ error: "Name is required" }, 400);
+  }
+
+  // If setting as active, deactivate others first
+  if (is_active) {
+    db.prepare("UPDATE programmes SET is_active = 0 WHERE user_id = ?").run(user.id);
+  }
+
+  const result = db
+    .prepare(
+      "INSERT INTO programmes (user_id, name, is_active) VALUES (?, ?, ?)",
+    )
+    .run(user.id, name, is_active ? 1 : 0);
+
+  return c.json({ id: result.lastInsertRowid });
+});
+
+// Update programme
+app.put("/api/programmes/:id", async (c) => {
+  const user = requireAuth(c);
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const id = parseInt(c.req.param("id"));
+  const body = await c.req.json();
+  const { name } = body;
+
+  if (!name) {
+    return c.json({ error: "Name is required" }, 400);
+  }
+
+  // Verify ownership
+  const existing = db
+    .query("SELECT id FROM programmes WHERE id = ? AND user_id = ?")
+    .get(id, user.id);
+  if (!existing) {
+    return c.json({ error: "Programme not found" }, 404);
+  }
+
+  db.prepare("UPDATE programmes SET name = ? WHERE id = ?").run(name, id);
+
+  return c.json({ success: true });
+});
+
+// Delete programme (and its templates)
+app.delete("/api/programmes/:id", (c) => {
+  const user = requireAuth(c);
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const id = parseInt(c.req.param("id"));
+
+  // Verify ownership
+  const existing = db
+    .query("SELECT id FROM programmes WHERE id = ? AND user_id = ?")
+    .get(id, user.id);
+  if (!existing) {
+    return c.json({ error: "Programme not found" }, 404);
+  }
+
+  // Get template IDs to clean up related data
+  const templates = db
+    .query("SELECT id FROM templates WHERE programme_id = ?")
+    .all(id) as { id: number }[];
+
+  for (const template of templates) {
+    db.prepare("DELETE FROM schedule WHERE template_id = ?").run(template.id);
+    db.prepare("DELETE FROM template_exercises WHERE template_id = ?").run(template.id);
+  }
+
+  db.prepare("DELETE FROM templates WHERE programme_id = ?").run(id);
+  db.prepare("DELETE FROM programmes WHERE id = ? AND user_id = ?").run(id, user.id);
+
+  return c.json({ success: true });
+});
+
+// Activate programme
+app.post("/api/programmes/:id/activate", (c) => {
+  const user = requireAuth(c);
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const id = parseInt(c.req.param("id"));
+
+  // Verify ownership
+  const existing = db
+    .query("SELECT id FROM programmes WHERE id = ? AND user_id = ?")
+    .get(id, user.id);
+  if (!existing) {
+    return c.json({ error: "Programme not found" }, 404);
+  }
+
+  // Deactivate all, then activate this one
+  db.prepare("UPDATE programmes SET is_active = 0 WHERE user_id = ?").run(user.id);
+  db.prepare("UPDATE programmes SET is_active = 1 WHERE id = ?").run(id);
+
+  return c.json({ success: true });
+});
+
 // ============== SCHEDULE ==============
 
 app.get("/api/schedule", (c) => {
@@ -806,13 +988,29 @@ app.post("/api/sync/push", async (c) => {
         case "create":
         case "update":
           // Upsert logic based on table
-          if (table === "templates") {
+          if (table === "programmes") {
+            // If setting as active, deactivate others first
+            if (data.is_active) {
+              db.prepare("UPDATE programmes SET is_active = 0 WHERE user_id = ? AND id != ?").run(user.id, data.id);
+            }
             db.prepare(
-              `INSERT OR REPLACE INTO templates (id, user_id, name, rest_time, created_at)
+              `INSERT OR REPLACE INTO programmes (id, user_id, name, is_active, created_at)
                VALUES (?, ?, ?, ?, ?)`,
             ).run(
               data.id,
               user.id,
+              data.name,
+              data.is_active || 0,
+              data.created_at || new Date().toISOString(),
+            );
+          } else if (table === "templates") {
+            db.prepare(
+              `INSERT OR REPLACE INTO templates (id, user_id, programme_id, name, rest_time, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+            ).run(
+              data.id,
+              user.id,
+              data.programme_id,
               data.name,
               data.rest_time,
               data.created_at || new Date().toISOString(),
@@ -862,7 +1060,20 @@ app.post("/api/sync/push", async (c) => {
           break;
 
         case "delete":
-          if (table === "templates") {
+          if (table === "programmes") {
+            // Get template IDs to clean up related data
+            const templates = db
+              .query("SELECT id FROM templates WHERE programme_id = ?")
+              .all(recordId) as { id: number }[];
+            for (const template of templates) {
+              db.prepare("DELETE FROM schedule WHERE template_id = ?").run(template.id);
+              db.prepare("DELETE FROM template_exercises WHERE template_id = ?").run(template.id);
+            }
+            db.prepare("DELETE FROM templates WHERE programme_id = ?").run(recordId);
+            db.prepare(
+              "DELETE FROM programmes WHERE id = ? AND user_id = ?",
+            ).run(recordId, user.id);
+          } else if (table === "templates") {
             db.prepare(
               "DELETE FROM templates WHERE id = ? AND user_id = ?",
             ).run(recordId, user.id);
@@ -900,6 +1111,9 @@ app.get("/api/sync/pull", (c) => {
   const since = parseInt(c.req.query("since") || "0");
 
   // For now, return all user data (can optimize with updated_at later)
+  const programmes = db
+    .query("SELECT * FROM programmes WHERE user_id = ?")
+    .all(user.id);
   const templates = db
     .query("SELECT * FROM templates WHERE user_id = ?")
     .all(user.id);
@@ -931,6 +1145,7 @@ app.get("/api/sync/pull", (c) => {
 
   return c.json({
     changes: {
+      programmes,
       templates,
       templateExercises,
       schedule,
@@ -948,6 +1163,9 @@ app.get("/api/sync/full", (c) => {
   const exercises = db.query("SELECT * FROM exercises").all();
 
   // Get user's data
+  const programmes = db
+    .query("SELECT * FROM programmes WHERE user_id = ?")
+    .all(user.id);
   const templates = db
     .query("SELECT * FROM templates WHERE user_id = ?")
     .all(user.id);
@@ -979,6 +1197,7 @@ app.get("/api/sync/full", (c) => {
 
   return c.json({
     exercises,
+    programmes,
     templates,
     templateExercises,
     schedule,

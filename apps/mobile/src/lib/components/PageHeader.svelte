@@ -1,9 +1,18 @@
 <script lang="ts">
+	import { createEventDispatcher } from 'svelte';
+
 	export let title: string;
 	export let showBack = true;
+	export let customBack = false;
+
+	const dispatch = createEventDispatcher();
 
 	function goBack() {
-		history.back();
+		if (customBack) {
+			dispatch('back');
+		} else {
+			history.back();
+		}
 	}
 </script>
 

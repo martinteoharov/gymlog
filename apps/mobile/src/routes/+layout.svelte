@@ -1,10 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
 	import { user, authLoading, checkAuth } from '$lib/stores/auth';
 	import { initSync } from '$lib/stores/sync';
-	import Toast from '$lib/components/Toast.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import ActiveWorkoutBanner from '$lib/components/ActiveWorkoutBanner.svelte';
 
@@ -13,18 +11,17 @@
 	// Reactive active states
 	$: homeActive = currentPath === '/';
 	$: workoutsActive = currentPath === '/workouts' || currentPath.startsWith('/workouts/');
+	$: programmesActive = currentPath === '/programmes' || currentPath.startsWith('/programmes/');
 	$: statsActive = currentPath === '/stats' || currentPath.startsWith('/stats/');
 	$: accountActive = currentPath === '/account' || currentPath.startsWith('/account/');
 
 	onMount(async () => {
 		await checkAuth();
-		await initSync();
+		// Only init sync if user is authenticated (not local)
+		if ($user && !$user.isLocal) {
+			await initSync();
+		}
 	});
-
-	// Redirect to login if not authenticated
-	$: if (!$authLoading && !$user && currentPath !== '/login') {
-		goto('/login');
-	}
 </script>
 
 {#if $authLoading}
@@ -33,8 +30,6 @@
 			<div class="loading">Loading...</div>
 		</div>
 	</div>
-{:else if !$user && currentPath !== '/login'}
-	<!-- Redirecting to login -->
 {:else}
 	<div class="app">
 		<main id="content" class="content">
@@ -43,7 +38,6 @@
 			{/if}
 			<slot />
 		</main>
-		<Toast />
 		<ConfirmDialog />
 
 		{#if currentPath !== '/login'}
@@ -90,6 +84,29 @@
 						></path>
 					</svg>
 					Workouts
+				</a>
+				<a
+					href="/programmes"
+					class="nav-item"
+					class:active={programmesActive}
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="24"
+						height="24"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<rect x="3" y="3" width="7" height="7" rx="1"></rect>
+						<rect x="14" y="3" width="7" height="7" rx="1"></rect>
+						<rect x="3" y="14" width="7" height="7" rx="1"></rect>
+						<rect x="14" y="14" width="7" height="7" rx="1"></rect>
+					</svg>
+					Programmes
 				</a>
 				<a
 					href="/stats"

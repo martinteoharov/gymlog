@@ -1,5 +1,9 @@
 <script lang="ts">
-	const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+	// Days ordered Monday-first, but values still use JS convention (0=Sun, 1=Mon, etc)
+	const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon, Tue, Wed, Thu, Fri, Sat, Sun
+	const DAY_NAMES: Record<number, string> = {
+		0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat'
+	};
 
 	export let selected: number[] = [];
 	export let taken: Map<number, string> = new Map();
@@ -24,17 +28,17 @@
 </script>
 
 <div class="day-toggle">
-	{#each DAY_NAMES as dayName, index}<input
+	{#each DAY_ORDER as dayIndex}<input
 			type="checkbox"
-			id="day-{index}"
+			id="day-{dayIndex}"
 			class="day-checkbox"
-			checked={isSelected(index)}
-			disabled={isTaken(index)}
-			on:change={() => toggleDay(index)}
+			checked={isSelected(dayIndex)}
+			disabled={isTaken(dayIndex)}
+			on:change={() => toggleDay(dayIndex)}
 		/><label
-			for="day-{index}"
+			for="day-{dayIndex}"
 			class="day-label"
-			class:taken={isTaken(index)}
-			title={isTaken(index) ? taken.get(index) : ''}
-		>{dayName}</label>{/each}
+			class:taken={isTaken(dayIndex)}
+			title={isTaken(dayIndex) ? taken.get(dayIndex) : ''}
+		>{DAY_NAMES[dayIndex]}</label>{/each}
 </div>

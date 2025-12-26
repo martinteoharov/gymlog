@@ -13,11 +13,12 @@
     "cap:init": "cap init GymLog com.gymlog.app --web-dir build",
     "cap:add:ios": "cap add ios",
     "cap:add:android": "cap add android",
-    "cap:sync": "cap sync",
-    "cap:open:ios": "cap open ios",
-    "cap:open:android": "cap open android",
-    "mobile:ios": "bun run build && cap sync ios && cap open ios",
-    "mobile:android": "bun run build && cap sync android && cap open android"
+    "cap:sync": "mise exec -- cap sync",
+    "cap:open:ios": "mise exec -- cap open ios",
+    "cap:open:android": "mise exec -- cap open android",
+    "mobile:ios": "bun run build && mise exec -- cap sync ios && mise exec -- cap open ios",
+    "mobile:android": "bun run build && mise exec -- cap sync android && mise exec -- cap open android",
+    "rebuild-and-sync": "bun run build && mise exec -- cap sync"
   },
   "devDependencies": {
     "@capacitor/android": "^8.0.0",

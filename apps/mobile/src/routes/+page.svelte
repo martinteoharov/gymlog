@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { db, getWorkoutStats, getRecentWorkouts, getActiveWorkout } from '$lib/db';
+	import { db, getWorkoutStats, getRecentWorkouts, type Programme } from '$lib/db';
 	import { user } from '$lib/stores/auth';
 	import { buildCalendarWeek, formatWorkoutDate } from '$lib/utils/date';
+	import { calculateCycleProgress, type CycleProgress } from '$lib/utils/cycle';
 	import CalendarStrip from '$lib/components/CalendarStrip.svelte';
 	import StatCard from '$lib/components/StatCard.svelte';
 	import LoadingState from '$lib/components/LoadingState.svelte';
+	import CycleProgressIndicator from '$lib/components/CycleProgressIndicator.svelte';
 
 	interface CalendarDay {
 		dayName: string;
@@ -30,7 +32,10 @@
 	let totalWorkouts = 0;
 	let thisWeekWorkouts = 0;
 	let workoutHistory: WorkoutHistory[] = [];
-	let activeWorkout: { template_id: number; template_name: string } | null = null;
+
+	let activeProgramme: Programme | null = null;
+	let cycleProgress: CycleProgress | null = null;
+	let programmeTemplateIds: number[] = [];
 	let loading = true;
 
 	onMount(async () => {
@@ -47,11 +52,10 @@
 			const todayDow = today.getDay();
 
 			// Load data in parallel where possible
-			const [schedules, stats, history, activeState] = await Promise.all([
+			const [schedules, stats, history] = await Promise.all([
 				db.schedule.where('user_id').equals(userId).toArray(),
 				getWorkoutStats(userId),
-				getRecentWorkouts(userId), // No limit - get full history
-				getActiveWorkout()
+				getRecentWorkouts(userId) // No limit - get full history
 			]);
 
 			// Build calendar days
@@ -94,17 +98,15 @@
 				exerciseList = '';
 			}
 
-			// Check for active workout to resume
-			if (activeState) {
-				const template = await db.templates.get(activeState.template_id);
-				if (template) {
-					activeWorkout = {
-						template_id: template.id,
-						template_name: template.name
-					};
-				}
+			// Load active programme with cycle progress
+			activeProgramme = await db.programmes.where({ user_id: userId, is_active: 1 }).first() || null;
+			if (activeProgramme) {
+				const programmeTemplates = await db.templates.where('programme_id').equals(activeProgramme.id).toArray();
+				programmeTemplateIds = programmeTemplates.map(t => t.id);
+				cycleProgress = await calculateCycleProgress(userId, activeProgramme.id);
 			} else {
-				activeWorkout = null;
+				programmeTemplateIds = [];
+				cycleProgress = null;
 			}
 		} catch (err) {
 			console.error('Failed to load home data:', err);
@@ -116,12 +118,6 @@
 	function startWorkout() {
 		if (todaySchedule?.template_id) {
 			goto(`/workouts/${todaySchedule.template_id}/active`);
-		}
-	}
-
-	function resumeWorkout() {
-		if (activeWorkout?.template_id) {
-			goto(`/workouts/${activeWorkout.template_id}/active`);
 		}
 	}
 
@@ -150,26 +146,33 @@
 	{#if loading}
 		<LoadingState message="Loading..." />
 	{:else}
-		<!-- Active Workout Banner -->
-		{#if activeWorkout}
-			<div
-				class="active-workout-banner"
-				on:click={resumeWorkout}
-				on:keydown={(e) => e.key === 'Enter' && resumeWorkout()}
-				role="button"
-				tabindex="0"
-			>
-				<div class="active-workout-icon">▶</div>
-				<div class="active-workout-info">
-					<div class="active-workout-label">Workout in progress</div>
-					<div class="active-workout-name">{activeWorkout.template_name}</div>
-				</div>
-				<div class="active-workout-action">Resume</div>
-			</div>
-		{/if}
-
 		<!-- Calendar Strip -->
 		<CalendarStrip days={calendarDays} />
+
+		<!-- Current Programme Card -->
+		{#if activeProgramme}
+			<a href="/programmes/{activeProgramme.id}" class="programme-card">
+				<div class="programme-card-header">
+					<span class="programme-label">Current Programme</span>
+					<span class="programme-name">{activeProgramme.name}</span>
+				</div>
+				{#if cycleProgress && programmeTemplateIds.length > 0}
+					<div class="programme-cycle">
+						<span class="cycle-label">Cycle {cycleProgress.currentCycle}</span>
+						<CycleProgressIndicator
+							templateIds={programmeTemplateIds}
+							completedIds={cycleProgress.completedIds}
+							currentId={null}
+						/>
+					</div>
+				{/if}
+			</a>
+		{:else}
+			<a href="/programmes" class="programme-card programme-card-empty">
+				<span class="programme-label">No active programme</span>
+				<span class="programme-cta">Set up a programme</span>
+			</a>
+		{/if}
 
 		<!-- Today's Workout -->
 		{#if todaySchedule?.template_id}
@@ -230,47 +233,56 @@
 </div>
 
 <style>
-	.active-workout-banner {
+	.programme-card {
 		display: flex;
+		justify-content: space-between;
 		align-items: center;
-		gap: 12px;
-		padding: 12px 16px;
+		padding: 16px;
 		margin-bottom: 16px;
-		background: var(--primary);
-		border-radius: 12px;
-		cursor: pointer;
-		transition: opacity 0.15s;
+		background: var(--bg-secondary);
+		border-radius: var(--border-radius);
+		text-decoration: none;
+		color: inherit;
 	}
 
-	.active-workout-banner:hover {
-		opacity: 0.9;
+	.programme-card-header {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
 	}
 
-	.active-workout-icon {
-		font-size: 18px;
+	.programme-label {
+		font-size: 12px;
+		color: var(--text-muted);
 	}
 
-	.active-workout-info {
-		flex: 1;
-	}
-
-	.active-workout-label {
-		font-size: 11px;
-		text-transform: uppercase;
-		letter-spacing: 0.5px;
-		opacity: 0.8;
-	}
-
-	.active-workout-name {
+	.programme-name {
 		font-size: 16px;
 		font-weight: 600;
 	}
 
-	.active-workout-action {
+	.programme-cycle {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.cycle-label {
+		font-size: 13px;
+		color: var(--text-secondary);
+	}
+
+	.programme-card-empty {
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		padding: 20px;
+		text-align: center;
+	}
+
+	.programme-cta {
 		font-size: 14px;
-		font-weight: 500;
-		padding: 6px 12px;
-		background: rgba(255, 255, 255, 0.2);
-		border-radius: 6px;
+		color: var(--accent);
+		font-weight: 600;
 	}
 </style>

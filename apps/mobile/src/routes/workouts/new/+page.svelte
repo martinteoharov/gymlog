@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { page } from '$app/stores';
+	import { db } from '$lib/db';
 	import { user } from '$lib/stores/auth';
-	import { saveTemplateWithExercises, validateTemplateData, type TemplateFormExercise } from '$lib/stores/sync';
-	import { toasts } from '$lib/stores/toast';
+	import { saveTemplateWithExercises, validateTemplateData, getActiveProgramme, type TemplateFormExercise } from '$lib/stores/sync';
+	import { confirmDialog } from '$lib/stores/confirm';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import RestTimePicker from '$lib/components/RestTimePicker.svelte';
 	import DayToggle from '$lib/components/DayToggle.svelte';
@@ -14,6 +16,8 @@
 	let selectedDays: number[] = [];
 	let selectedExercises: TemplateFormExercise[] = [];
 	let modalOpen = false;
+	let programmeId: number | null = null;
+	let programmeName: string | null = null;
 
 	// Auto-save state
 	let templateId: number | null = null;
@@ -21,7 +25,24 @@
 	let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 	let saveStatus: 'idle' | 'saving' | 'saved' | 'error' = 'idle';
 
-	onMount(() => {
+	onMount(async () => {
+		// Check for programme query param or use active programme
+		const queryProgrammeId = $page.url.searchParams.get('programme');
+		if (queryProgrammeId) {
+			const prog = await db.programmes.get(parseInt(queryProgrammeId));
+			if (prog) {
+				programmeId = prog.id;
+				programmeName = prog.name;
+			}
+		} else if ($user) {
+			// Auto-assign to active programme
+			const activeProg = await getActiveProgramme($user.id);
+			if (activeProg) {
+				programmeId = activeProg.id;
+				programmeName = activeProg.name;
+			}
+		}
+
 		// Enable auto-save after initial load
 		setTimeout(() => {
 			initialized = true;
@@ -62,7 +83,8 @@
 			name: name.trim(),
 			rest_time: restTime,
 			days: selectedDays,
-			exercises: selectedExercises
+			exercises: selectedExercises,
+			programme_id: programmeId
 		};
 
 		// Validate (but don't block save for missing exercises during creation)
@@ -88,14 +110,12 @@
 		} catch (err) {
 			console.error('Failed to save template:', err);
 			saveStatus = 'error';
-			toasts.error('Failed to save template');
 		}
 	}
 
 	function handleExerciseSelect(event: CustomEvent<{ id: number; name: string; muscle: string }>) {
 		const { id, name: exerciseName, muscle } = event.detail;
 		if (selectedExercises.find((e) => e.id === id)) {
-			toasts.warning('Exercise already added');
 			return;
 		}
 
@@ -113,7 +133,6 @@
 				]
 			}
 		];
-		toasts.success(`Added ${exerciseName}`);
 	}
 
 	function removeExercise(id: number) {
@@ -158,17 +177,46 @@
 			return ex;
 		});
 	}
+
+	async function handleBack() {
+		// If template has been saved (has an ID), just go back
+		if (templateId !== null) {
+			history.back();
+			return;
+		}
+
+		// If there's unsaved data (exercises added but no name), warn the user
+		if (selectedExercises.length > 0 && !name.trim()) {
+			const confirmed = await confirmDialog.confirm({
+				title: 'Unsaved Template',
+				message: 'You have added exercises but haven\'t given this template a name. If you leave now, your changes will be lost.',
+				confirmText: 'Leave Anyway',
+				cancelText: 'Stay',
+				variant: 'danger'
+			});
+			if (!confirmed) return;
+		}
+
+		history.back();
+	}
 </script>
 
 <div class="page">
-	<PageHeader title="New Template">
+	<PageHeader title="New Workout" customBack on:back={handleBack}>
 		<span slot="right">
 			<SaveStatus status={saveStatus} />
 		</span>
 	</PageHeader>
 
+	{#if programmeName}
+		<div class="programme-badge">
+			<span class="programme-badge-label">Programme:</span>
+			<span class="programme-badge-name">{programmeName}</span>
+		</div>
+	{/if}
+
 	<div class="form-group">
-		<label for="name" class="form-label">Template Name</label>
+		<label for="name" class="form-label">Workout Name</label>
 		<input
 			type="text"
 			id="name"

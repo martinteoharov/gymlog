@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
 	appId: 'com.gymlog.app',
-	appName: 'GymLog',
+	appName: 'OpenRep',
 	webDir: 'build',
 	server: {
 		// For development, you can use your local API
@@ -10,7 +10,8 @@ const config: CapacitorConfig = {
 		// cleartext: true
 	},
 	ios: {
-		contentInset: 'automatic'
+		contentInset: 'never',
+		backgroundColor: '#1c1c1e'
 	},
 	android: {
 		backgroundColor: '#1c1c1e'

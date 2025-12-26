@@ -33,14 +33,26 @@ db.exec(`
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 
+  -- Programmes (groups of templates)
+  CREATE TABLE IF NOT EXISTS programmes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    is_active INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   -- Workout templates (e.g., "Push Day", "Pull Day")
   CREATE TABLE IF NOT EXISTS templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
+    programme_id INTEGER,
     name TEXT NOT NULL,
     rest_time INTEGER DEFAULT 180,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (programme_id) REFERENCES programmes(id) ON DELETE SET NULL
   );
 
   -- Exercises in a template
@@ -116,6 +128,41 @@ try {
   db.exec("ALTER TABLE users RENAME COLUMN email TO username");
 } catch (e) {
   // Column already renamed or doesn't exist
+}
+
+// Migration: Add programme_id column to templates if it doesn't exist
+try {
+  db.exec("ALTER TABLE templates ADD COLUMN programme_id INTEGER REFERENCES programmes(id) ON DELETE SET NULL");
+} catch (e) {
+  // Column already exists, ignore
+}
+
+// Migration: Create default programme for users with existing templates
+try {
+  // Get all users who have templates but no programmes
+  const usersWithTemplates = db.query(`
+    SELECT DISTINCT t.user_id
+    FROM templates t
+    LEFT JOIN programmes p ON p.user_id = t.user_id
+    WHERE p.id IS NULL
+  `).all() as { user_id: number }[];
+
+  for (const { user_id } of usersWithTemplates) {
+    // Create a default programme for this user
+    const result = db.prepare(`
+      INSERT INTO programmes (user_id, name, is_active)
+      VALUES (?, 'My Programme', 1)
+    `).run(user_id);
+
+    const programmeId = result.lastInsertRowid;
+
+    // Link all their templates to this programme
+    db.prepare(`
+      UPDATE templates SET programme_id = ? WHERE user_id = ? AND programme_id IS NULL
+    `).run(programmeId, user_id);
+  }
+} catch (e) {
+  console.error("Migration error for default programmes:", e);
 }
 
 export { db };

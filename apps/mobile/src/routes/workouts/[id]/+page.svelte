@@ -4,7 +4,6 @@
 	import { db, getScheduleConflicts } from '$lib/db';
 	import { user } from '$lib/stores/auth';
 	import { saveTemplateWithExercises, deleteTemplateWithExercises, validateTemplateData, type TemplateFormExercise } from '$lib/stores/sync';
-	import { toasts } from '$lib/stores/toast';
 	import { confirmDialog } from '$lib/stores/confirm';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import RestTimePicker from '$lib/components/RestTimePicker.svelte';
@@ -26,16 +25,29 @@
 	let initialized = false;
 	let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 	let saveStatus: 'idle' | 'saving' | 'saved' | 'error' = 'idle';
+	let hasUserEdited = false; // Only show save status after user makes a change
+
+	// Programme info
+	let programmeId: number | null = null;
+	let programmeName: string | null = null;
+
+	// Track original values to detect changes
+	let originalName = '';
+	let originalRestTime = 180;
+	let originalDays: number[] = [];
+	let originalExerciseCount = 0;
 
 	onMount(async () => {
 		await loadTemplate();
 	});
 
 	onDestroy(() => {
-		// Save immediately if there's a pending save
+		// Save immediately if there's a pending save and there are actual changes
 		if (saveTimeout) {
 			clearTimeout(saveTimeout);
-			doSave();
+			if (checkForChanges()) {
+				doSave();
+			}
 		}
 	});
 
@@ -52,14 +64,20 @@
 			]);
 
 			if (!template) {
-				toasts.error('Template not found');
 				history.back();
 				return;
 			}
 
 			name = template.name;
 			restTime = template.rest_time;
+			programmeId = template.programme_id ?? null;
 			takenDays = conflicts;
+
+			// Load programme name if assigned
+			if (programmeId) {
+				const programme = await db.programmes.get(programmeId);
+				programmeName = programme?.name ?? null;
+			}
 
 			// Load template exercises with exercise details (batch query)
 			const templateExercises = await db.templateExercises
@@ -90,9 +108,14 @@
 				.equals(templateId)
 				.toArray();
 			selectedDays = schedules.map(s => s.day_of_week);
+
+			// Store original values
+			originalName = name;
+			originalRestTime = restTime;
+			originalDays = [...selectedDays];
+			originalExerciseCount = selectedExercises.length;
 		} catch (err) {
 			console.error('Failed to load template:', err);
-			toasts.error('Failed to load template');
 		} finally {
 			loading = false;
 			// Wait a tick before enabling auto-save to avoid saving on initial load
@@ -102,11 +125,25 @@
 		}
 	}
 
+	// Check if there are actual changes
+	function checkForChanges(): boolean {
+		if (name !== originalName) return true;
+		if (restTime !== originalRestTime) return true;
+		if (selectedExercises.length !== originalExerciseCount) return true;
+		if (selectedDays.length !== originalDays.length) return true;
+		if (!selectedDays.every((d, i) => originalDays.includes(d))) return true;
+		return false;
+	}
+
 	// Auto-save with debounce when any data changes
 	$: if (initialized && !loading) {
 		// Create a serializable representation to trigger reactivity
 		void [name, restTime, selectedDays.length, selectedExercises.length];
-		scheduleAutoSave();
+		// Only schedule save if there are actual changes
+		if (checkForChanges()) {
+			hasUserEdited = true;
+			scheduleAutoSave();
+		}
 	}
 
 	function scheduleAutoSave() {
@@ -128,7 +165,8 @@
 			name: name.trim(),
 			rest_time: restTime,
 			days: selectedDays,
-			exercises: selectedExercises
+			exercises: selectedExercises,
+			programme_id: programmeId
 		};
 
 		// Validate
@@ -141,6 +179,13 @@
 		saveStatus = 'saving';
 		try {
 			await saveTemplateWithExercises(userId, templateId, data);
+
+			// Update original values after successful save
+			originalName = name;
+			originalRestTime = restTime;
+			originalDays = [...selectedDays];
+			originalExerciseCount = selectedExercises.length;
+
 			saveStatus = 'saved';
 			setTimeout(() => {
 				saveStatus = 'idle';
@@ -148,14 +193,12 @@
 		} catch (err) {
 			console.error('Failed to auto-save template:', err);
 			saveStatus = 'error';
-			toasts.error('Failed to save template');
 		}
 	}
 
 	function handleExerciseSelect(event: CustomEvent<{ id: number; name: string; muscle: string }>) {
 		const { id, name: exerciseName, muscle } = event.detail;
 		if (selectedExercises.find((e) => e.id === id)) {
-			toasts.warning('Exercise already added');
 			return;
 		}
 
@@ -173,7 +216,6 @@
 				]
 			}
 		];
-		toasts.success(`Added ${exerciseName}`);
 	}
 
 	function removeExercise(id: number) {
@@ -232,11 +274,9 @@
 		deleting = true;
 		try {
 			await deleteTemplateWithExercises(templateId);
-			toasts.success('Template deleted');
 			history.back();
 		} catch (err) {
 			console.error('Failed to delete template:', err);
-			toasts.error('Failed to delete template');
 		} finally {
 			deleting = false;
 		}
@@ -244,9 +284,11 @@
 </script>
 
 <div class="page">
-	<PageHeader title="Edit Template">
+	<PageHeader title={loading ? 'Loading...' : name || 'Edit Template'}>
 		<span slot="right">
-			<SaveStatus status={saveStatus} />
+			{#if hasUserEdited}
+				<SaveStatus status={saveStatus} />
+			{/if}
 		</span>
 	</PageHeader>
 
@@ -254,7 +296,7 @@
 		<LoadingState message="Loading template..." />
 	{:else}
 		<div class="form-group">
-			<label for="name" class="form-label">Template Name</label>
+			<label for="name" class="form-label">Workout Name</label>
 			<input
 				type="text"
 				id="name"

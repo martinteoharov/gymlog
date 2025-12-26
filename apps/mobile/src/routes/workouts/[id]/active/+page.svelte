@@ -2,13 +2,14 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
-	import { db, getLastSetsForExercise, type ActiveWorkoutState } from '$lib/db';
+	import { db, getLastSetsForExercise, type ActiveWorkoutState, type Programme } from '$lib/db';
 	import { user } from '$lib/stores/auth';
 	import { createWorkoutLocal, completeWorkoutLocal } from '$lib/stores/sync';
-	import { toasts } from '$lib/stores/toast';
 	import { confirmDialog } from '$lib/stores/confirm';
+	import { calculateCycleProgress, calculateTemplateDisplayWeights, type CycleProgress, type DisplayWeightResult } from '$lib/utils/cycle';
 	import ExerciseModal from '$lib/components/ExerciseModal.svelte';
 	import LoadingState from '$lib/components/LoadingState.svelte';
+	import CycleProgressIndicator from '$lib/components/CycleProgressIndicator.svelte';
 
 	interface SetInput {
 		reps: number;
@@ -33,6 +34,11 @@
 	let activeWorkoutId: number | undefined = undefined; // Dexie record ID for updates
 	let startedAt: number = Date.now(); // Preserve original start time
 	let modalOpen = false;
+
+	// Programme and cycle state
+	let activeProgramme: Programme | null = null;
+	let cycleProgress: CycleProgress | null = null;
+	let programmeTemplateIds: number[] = [];
 
 	// Rest timer state
 	let timerRunning = false;
@@ -93,13 +99,22 @@
 			// Load template from Dexie
 			const template = await db.templates.get(templateId);
 			if (!template) {
-				toasts.error('Template not found');
 				goto('/workouts');
 				return;
 			}
 
 			templateName = template.name;
 			restTimeSeconds = template.rest_time;
+
+			// Load programme and cycle progress if template belongs to one
+			if (template.programme_id) {
+				activeProgramme = await db.programmes.get(template.programme_id) || null;
+				if (activeProgramme) {
+					const programmeTemplates = await db.templates.where('programme_id').equals(activeProgramme.id).toArray();
+					programmeTemplateIds = programmeTemplates.map(t => t.id);
+					cycleProgress = await calculateCycleProgress(userId, activeProgramme.id);
+				}
+			}
 
 			// Load template exercises and exercise details in parallel
 			const templateExercises = await db.templateExercises
@@ -113,6 +128,12 @@
 				: [];
 			const exerciseDetailsMap = new Map(exerciseRecords.map(e => [e.id, e]));
 
+			// Calculate dynamic weights if part of a programme
+			let displayWeights: Map<number, DisplayWeightResult> | null = null;
+			if (activeProgramme && cycleProgress) {
+				displayWeights = await calculateTemplateDisplayWeights(userId, activeProgramme.id, templateId, templateExercises);
+			}
+
 			// Build exercise state with last workout data
 			const exerciseStates: ExerciseState[] = [];
 
@@ -123,12 +144,22 @@
 				const templateSets = JSON.parse(te.sets_data || '[]') as { reps: number; weight: number }[];
 				const lastSets = await getLastSetsForExercise(userId, te.exercise_id);
 
-				// Build sets - use last workout values if available, otherwise template values
+				// Get dynamic weight if available (cycle-based progression)
+				const dynamicWeight = displayWeights?.get(te.exercise_id);
+
+				// Build sets - use dynamic weight, last workout values, or template values
 				const sets: SetInput[] = templateSets.map((ts, idx) => {
 					const lastSet = lastSets[idx];
+					// Priority: dynamic weight (if cycle complete) > last workout > template
+					let weight = ts.weight;
+					if (dynamicWeight) {
+						weight = dynamicWeight.weight;
+					} else if (lastSet?.weight != null) {
+						weight = lastSet.weight;
+					}
 					return {
 						reps: lastSet?.reps ?? ts.reps,
-						weight: lastSet?.weight ?? ts.weight,
+						weight,
 						completed: false
 					};
 				});
@@ -156,7 +187,6 @@
 			}
 		} catch (err) {
 			console.error('Failed to load workout:', err);
-			toasts.error('Failed to load workout');
 		} finally {
 			loading = false;
 		}
@@ -340,7 +370,6 @@
 			}
 			return e;
 		});
-		toasts.success(`Weight increased by ${ex.increment}kg for next time`);
 	}
 
 	// Set completion
@@ -358,20 +387,6 @@
 			// Set was just completed - restart timer
 			stopTimer();
 			startTimer();
-
-			// Check if all sets for this exercise are now completed
-			if (areAllSetsCompleted(exIndex)) {
-				// Offer to apply auto-increment
-				const shouldIncrement = await confirmDialog.confirm({
-					title: 'All Sets Completed!',
-					message: `Increase weight by ${ex.increment}kg for next workout?`,
-					confirmText: 'Yes, Increase',
-					cancelText: 'No Thanks'
-				});
-				if (shouldIncrement) {
-					applyAutoIncrement(exIndex);
-				}
-			}
 		}
 
 		saveProgress();
@@ -409,7 +424,6 @@
 				]
 			}
 		];
-		toasts.success(`Added ${name}`);
 		saveProgress();
 	}
 
@@ -437,7 +451,6 @@
 		if (!confirmed) return;
 
 		await db.activeWorkout.where('template_id').equals(templateId).delete();
-		toasts.info('Workout cancelled');
 		goto('/');
 	}
 
@@ -463,18 +476,15 @@
 		}
 
 		if (!hasCompletedSets) {
-			toasts.warning('Complete at least one set before finishing');
 			return;
 		}
 
 		try {
 			await completeWorkoutLocal(workoutId, completedSetsData);
 			await db.activeWorkout.where('template_id').equals(templateId).delete();
-			toasts.success('Workout completed!');
 			goto('/');
 		} catch (err) {
 			console.error('Failed to complete workout:', err);
-			toasts.error('Failed to complete workout');
 		}
 	}
 </script>
@@ -494,7 +504,17 @@
 				</button>
 				<div>
 					<h1 class="page-title" style="margin-bottom: 2px;">{templateName}</h1>
-					<div class="workout-duration">{formatWorkoutDuration(workoutDuration)}</div>
+					<div class="workout-meta">
+						<span class="workout-duration">{formatWorkoutDuration(workoutDuration)}</span>
+						{#if cycleProgress && programmeTemplateIds.length > 0}
+							<span class="meta-separator">·</span>
+							<CycleProgressIndicator
+								templateIds={programmeTemplateIds}
+								completedIds={cycleProgress.completedIds}
+								currentId={templateId}
+							/>
+						{/if}
+					</div>
 				</div>
 			</div>
 

@@ -35,11 +35,14 @@ export function getTodayDayOfWeek(): number {
 }
 
 /**
- * Get start of current week (Sunday)
+ * Get start of current week (Monday)
  */
 export function getWeekStartDate(date: Date = new Date()): Date {
 	const start = new Date(date);
-	start.setDate(date.getDate() - date.getDay());
+	const dayOfWeek = date.getDay();
+	// Convert Sunday (0) to 7 for Monday-first calculation
+	const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+	start.setDate(date.getDate() - daysFromMonday);
 	start.setHours(0, 0, 0, 0);
 	return start;
 }
@@ -93,23 +96,34 @@ export function isDateInRange(dateStr: string, startDate: Date, endDate?: Date):
 }
 
 /**
- * Build calendar days array for a week view
+ * Build calendar days array for a week view (Monday-first)
  */
 export function buildCalendarWeek(
 	scheduledDays: Set<number>,
 	baseDate: Date = new Date()
 ): Array<{ dayName: string; dayNumber: number; isToday: boolean; hasWorkout: boolean }> {
-	const todayDow = baseDate.getDay();
 	const days: Array<{ dayName: string; dayNumber: number; isToday: boolean; hasWorkout: boolean }> = [];
 
+	// Get Monday of this week
+	const weekStart = getWeekStartDate(baseDate);
+	const todayDate = baseDate.getDate();
+	const todayMonth = baseDate.getMonth();
+	const todayYear = baseDate.getFullYear();
+
 	for (let i = 0; i < 7; i++) {
-		const date = new Date(baseDate);
-		date.setDate(baseDate.getDate() - todayDow + i);
+		const date = new Date(weekStart);
+		date.setDate(weekStart.getDate() + i);
+		const dayOfWeek = date.getDay(); // JS day of week (0=Sun, 1=Mon, etc)
+
+		const isToday = date.getDate() === todayDate &&
+			date.getMonth() === todayMonth &&
+			date.getFullYear() === todayYear;
+
 		days.push({
 			dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
 			dayNumber: date.getDate(),
-			isToday: i === todayDow,
-			hasWorkout: scheduledDays.has(i)
+			isToday,
+			hasWorkout: scheduledDays.has(dayOfWeek)
 		});
 	}
 

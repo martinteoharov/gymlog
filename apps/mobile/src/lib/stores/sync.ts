@@ -1,7 +1,7 @@
 import { writable, get } from 'svelte/store';
-import { db, type Template, type TemplateExercise, type Schedule } from '$lib/db';
+import { db, type Template, type TemplateExercise, type Schedule, type Programme } from '$lib/db';
 import { API_BASE } from '$lib/api/config';
-import { toasts } from './toast';
+import { user } from './auth';
 
 // Sync state
 export const syncStatus = writable<'idle' | 'syncing' | 'error'>('idle');
@@ -101,9 +101,15 @@ export async function deleteRecord(table: string, id: number) {
 	await queueChange(table, id, 'delete', null);
 }
 
-// Sync if online
+// Check if user is authenticated (not local-only)
+function isAuthenticated(): boolean {
+	const currentUser = get(user);
+	return currentUser !== null && currentUser.isLocal !== true;
+}
+
+// Sync if online and authenticated
 function syncIfOnline() {
-	if (typeof navigator !== 'undefined' && navigator.onLine) {
+	if (typeof navigator !== 'undefined' && navigator.onLine && isAuthenticated()) {
 		sync();
 	}
 }
@@ -129,7 +135,6 @@ function scheduleRetry() {
 	if (retryCount >= MAX_RETRIES) {
 		console.error(`Sync failed after ${MAX_RETRIES} retries`);
 		syncStatus.set('error');
-		toasts.error('Sync failed. Changes saved locally.');
 
 		// Auto-reset error state after delay
 		clearErrorReset();
@@ -158,6 +163,11 @@ function scheduleRetry() {
 
 // Main sync function
 export async function sync(): Promise<boolean> {
+	// Skip sync if not authenticated
+	if (!isAuthenticated()) {
+		return false;
+	}
+
 	// Prevent concurrent syncs
 	if (syncInProgress) {
 		return false;
@@ -230,7 +240,7 @@ export async function sync(): Promise<boolean> {
 	}
 }
 
-// Initial sync on app load
+// Initial sync on app load (only call this when user is authenticated)
 export async function initSync() {
 	await updatePendingCount();
 
@@ -238,19 +248,19 @@ export async function initSync() {
 	if (typeof window !== 'undefined') {
 		window.addEventListener('online', () => {
 			isOnline.set(true);
-			toasts.info('Back online. Syncing...');
-			retryCount = 0; // Reset retry count when coming back online
-			sync();
+			if (isAuthenticated()) {
+				retryCount = 0; // Reset retry count when coming back online
+				sync();
+			}
 		});
 
 		window.addEventListener('offline', () => {
 			isOnline.set(false);
-			toasts.warning('You are offline. Changes will sync when connected.');
 			clearRetry();
 		});
 
-		// Try initial sync
-		if (navigator.onLine) {
+		// Try initial sync if authenticated
+		if (navigator.onLine && isAuthenticated()) {
 			sync();
 		}
 	}
@@ -322,6 +332,103 @@ export function clearSyncState() {
 // High-level offline-first operations
 // ============================================
 
+// ============================================
+// Programme operations
+// ============================================
+
+export interface ProgrammeFormData {
+	name: string;
+	is_active?: boolean;
+}
+
+/**
+ * Save a programme (create or update).
+ * Returns the programme ID.
+ */
+export async function saveProgramme(
+	userId: number,
+	programmeId: number | null,
+	data: ProgrammeFormData
+): Promise<number> {
+	const now = Date.now();
+	const isNew = programmeId === null || programmeId < 0;
+	const id = programmeId ?? generateLocalId();
+
+	// If setting as active, deactivate others first
+	if (data.is_active) {
+		const allProgrammes = await db.programmes.where('user_id').equals(userId).toArray();
+		for (const prog of allProgrammes) {
+			if (prog.is_active && prog.id !== id) {
+				prog.is_active = 0;
+				prog.updated_at = now;
+				await db.programmes.put(prog);
+				await queueChange('programmes', prog.id, 'update', prog);
+			}
+		}
+	}
+
+	const programme: Programme = {
+		id,
+		user_id: userId,
+		name: data.name,
+		is_active: data.is_active ? 1 : 0,
+		created_at: new Date().toISOString(),
+		updated_at: now
+	};
+
+	await db.programmes.put(programme);
+	await queueChange('programmes', id, isNew ? 'create' : 'update', programme);
+
+	return id;
+}
+
+/**
+ * Activate a programme (deactivates all others).
+ */
+export async function activateProgramme(userId: number, programmeId: number): Promise<void> {
+	const now = Date.now();
+
+	// Deactivate all programmes for this user
+	const allProgrammes = await db.programmes.where('user_id').equals(userId).toArray();
+	for (const prog of allProgrammes) {
+		const shouldBeActive = prog.id === programmeId;
+		if (prog.is_active !== (shouldBeActive ? 1 : 0)) {
+			prog.is_active = shouldBeActive ? 1 : 0;
+			prog.updated_at = now;
+			await db.programmes.put(prog);
+			await queueChange('programmes', prog.id, 'update', prog);
+		}
+	}
+}
+
+/**
+ * Delete a programme and all its templates.
+ */
+export async function deleteProgramme(programmeId: number): Promise<void> {
+	// Get all templates in this programme
+	const templates = await db.templates.where('programme_id').equals(programmeId).toArray();
+
+	// Delete each template with its exercises and schedules
+	for (const template of templates) {
+		await deleteTemplateWithExercises(template.id);
+	}
+
+	// Delete the programme itself
+	await db.programmes.delete(programmeId);
+	await queueChange('programmes', programmeId, 'delete', null);
+}
+
+/**
+ * Get the active programme for a user.
+ */
+export async function getActiveProgramme(userId: number): Promise<Programme | undefined> {
+	return await db.programmes.where({ user_id: userId, is_active: 1 }).first();
+}
+
+// ============================================
+// Template operations
+// ============================================
+
 export interface TemplateFormExercise {
 	id: number;
 	name: string;
@@ -335,6 +442,7 @@ export interface TemplateFormData {
 	rest_time: number;
 	days: number[];
 	exercises: TemplateFormExercise[];
+	programme_id: number | null;
 }
 
 /**
@@ -385,6 +493,7 @@ export async function saveTemplateWithExercises(
 	const template: Template = {
 		id,
 		user_id: userId,
+		programme_id: data.programme_id,
 		name: data.name,
 		rest_time: data.rest_time,
 		created_at: new Date().toISOString(),
@@ -394,10 +503,14 @@ export async function saveTemplateWithExercises(
 	await queueChange('templates', id, isNew ? 'create' : 'update', template);
 
 	// 2. Delete old template exercises and add new ones
+	// Use deleteMany for more robust deletion
 	const oldExercises = await db.templateExercises.where('template_id').equals(id).toArray();
-	for (const old of oldExercises) {
-		await db.templateExercises.delete(old.id);
-		await queueChange('templateExercises', old.id, 'delete', null);
+	if (oldExercises.length > 0) {
+		const oldIds = oldExercises.map(e => e.id);
+		await db.templateExercises.bulkDelete(oldIds);
+		for (const old of oldExercises) {
+			await queueChange('templateExercises', old.id, 'delete', null);
+		}
 	}
 
 	// Add new template exercises

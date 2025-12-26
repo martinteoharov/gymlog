@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import { api } from '$lib/api/client';
 import { db } from '$lib/db';
 import { fullSync, clearSyncState } from './sync';
@@ -7,25 +7,45 @@ export interface User {
 	id: number;
 	username: string;
 	name: string | null;
+	isLocal?: boolean; // true for anonymous local-only user
 }
+
+// Local anonymous user (used when not logged in)
+const LOCAL_USER: User = {
+	id: -1,
+	username: 'local',
+	name: null,
+	isLocal: true
+};
 
 export const user = writable<User | null>(null);
 export const authLoading = writable(true);
 
+// Check if user is authenticated with the server
 export async function checkAuth() {
 	authLoading.set(true);
 	try {
 		const userData = await api.getUser();
-		user.set(userData);
 		if (userData) {
+			user.set(userData);
 			// Sync data on successful auth check
 			await fullSync();
+		} else {
+			// No server auth - use local anonymous user
+			user.set(LOCAL_USER);
 		}
 	} catch {
-		user.set(null);
+		// API call failed (no server, offline, etc.) - use local anonymous user
+		user.set(LOCAL_USER);
 	} finally {
 		authLoading.set(false);
 	}
+}
+
+// Check if currently using local anonymous user
+export function isLocalUser(): boolean {
+	const currentUser = get(user);
+	return currentUser?.isLocal === true;
 }
 
 export async function login(username: string, password: string) {
@@ -43,8 +63,19 @@ export async function register(username: string, password: string, name?: string
 }
 
 export async function logout() {
-	await api.logout();
-	user.set(null);
+	const currentUser = get(user);
+
+	// If logged in to server, call logout API
+	if (currentUser && !currentUser.isLocal) {
+		try {
+			await api.logout();
+		} catch {
+			// Ignore logout API errors
+		}
+	}
+
+	// Switch back to local user
+	user.set(LOCAL_USER);
 
 	// Clear sync state
 	clearSyncState();
