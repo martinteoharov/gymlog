@@ -859,6 +859,167 @@ app.get("/api/stats", (c) => {
   });
 });
 
+// Get weekly consistency data (last 12 weeks)
+// Consistency = completed workouts / scheduled workouts per week
+app.get("/api/stats/consistency", (c) => {
+  const user = requireAuth(c);
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const weeks = parseInt(c.req.query("weeks") || "12");
+
+  // Get scheduled days count (how many days per week user has workouts scheduled)
+  const scheduledDays = db
+    .query(
+      `SELECT COUNT(*) as count FROM schedule
+       WHERE user_id = ? AND template_id IS NOT NULL`,
+    )
+    .get(user.id) as { count: number };
+
+  const scheduledPerWeek = scheduledDays.count || 1; // Avoid division by zero
+
+  // Get completed workouts grouped by week for the last N weeks
+  const weeklyData = db
+    .query(
+      `SELECT
+        strftime('%Y-%W', completed_at) as week,
+        strftime('%Y-%m-%d', date(completed_at, 'weekday 0', '-6 days')) as week_start,
+        COUNT(*) as completed
+       FROM workouts
+       WHERE user_id = ?
+         AND completed_at IS NOT NULL
+         AND completed_at >= date('now', '-' || ? || ' weeks')
+       GROUP BY week
+       ORDER BY week ASC`,
+    )
+    .all(user.id, weeks) as { week: string; week_start: string; completed: number }[];
+
+  // Build response with consistency scores
+  const data = weeklyData.map((w) => ({
+    week: w.week_start,
+    completed: w.completed,
+    scheduled: scheduledPerWeek,
+    consistency: Math.min(1, w.completed / scheduledPerWeek), // Cap at 1.0
+  }));
+
+  return c.json({
+    scheduledPerWeek,
+    weeks: data,
+  });
+});
+
+// Get strength progression for exercises (max weight over time)
+app.get("/api/stats/strength", (c) => {
+  const user = requireAuth(c);
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const exerciseId = c.req.query("exercise_id");
+  const weeks = parseInt(c.req.query("weeks") || "12");
+
+  if (exerciseId) {
+    // Get progression for a specific exercise
+    const progression = db
+      .query(
+        `SELECT
+          date(w.completed_at) as date,
+          MAX(s.weight) as max_weight,
+          MAX(s.weight * s.reps) as max_volume
+         FROM sets s
+         JOIN workouts w ON s.workout_id = w.id
+         WHERE w.user_id = ?
+           AND s.exercise_id = ?
+           AND w.completed_at IS NOT NULL
+           AND w.completed_at >= date('now', '-' || ? || ' weeks')
+         GROUP BY date(w.completed_at)
+         ORDER BY date ASC`,
+      )
+      .all(user.id, parseInt(exerciseId), weeks) as {
+      date: string;
+      max_weight: number;
+      max_volume: number;
+    }[];
+
+    // Get exercise name
+    const exercise = db
+      .query("SELECT name FROM exercises WHERE id = ?")
+      .get(parseInt(exerciseId)) as { name: string } | null;
+
+    return c.json({
+      exercise_id: parseInt(exerciseId),
+      exercise_name: exercise?.name || "Unknown",
+      data: progression,
+    });
+  }
+
+  // Get list of exercises user has done with their latest max weight
+  const exerciseSummary = db
+    .query(
+      `SELECT
+        s.exercise_id,
+        e.name as exercise_name,
+        e.muscle_group,
+        MAX(s.weight) as max_weight,
+        COUNT(DISTINCT w.id) as workout_count
+       FROM sets s
+       JOIN workouts w ON s.workout_id = w.id
+       JOIN exercises e ON s.exercise_id = e.id
+       WHERE w.user_id = ? AND w.completed_at IS NOT NULL
+       GROUP BY s.exercise_id
+       HAVING workout_count >= 2
+       ORDER BY workout_count DESC
+       LIMIT 20`,
+    )
+    .all(user.id) as {
+    exercise_id: number;
+    exercise_name: string;
+    muscle_group: string;
+    max_weight: number;
+    workout_count: number;
+  }[];
+
+  return c.json({ exercises: exerciseSummary });
+});
+
+// Get overall strength trend (estimated 1RM or total volume over time)
+app.get("/api/stats/strength-trend", (c) => {
+  const user = requireAuth(c);
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const weeks = parseInt(c.req.query("weeks") || "12");
+
+  // Calculate weekly total volume (weight * reps across all exercises)
+  const weeklyVolume = db
+    .query(
+      `SELECT
+        strftime('%Y-%W', w.completed_at) as week,
+        strftime('%Y-%m-%d', date(w.completed_at, 'weekday 0', '-6 days')) as week_start,
+        SUM(s.weight * s.reps) as total_volume,
+        COUNT(DISTINCT w.id) as workouts
+       FROM sets s
+       JOIN workouts w ON s.workout_id = w.id
+       WHERE w.user_id = ?
+         AND w.completed_at IS NOT NULL
+         AND w.completed_at >= date('now', '-' || ? || ' weeks')
+       GROUP BY week
+       ORDER BY week ASC`,
+    )
+    .all(user.id, weeks) as {
+    week: string;
+    week_start: string;
+    total_volume: number;
+    workouts: number;
+  }[];
+
+  // Normalize volume per workout for fair comparison
+  const data = weeklyVolume.map((w) => ({
+    week: w.week_start,
+    totalVolume: w.total_volume,
+    workouts: w.workouts,
+    avgVolumePerWorkout: w.workouts > 0 ? Math.round(w.total_volume / w.workouts) : 0,
+  }));
+
+  return c.json({ weeks: data });
+});
+
 // ============== HOME DATA ==============
 
 app.get("/api/home", (c) => {

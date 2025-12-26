@@ -204,6 +204,50 @@ class ApiClient {
     }>("/api/stats");
   }
 
+  async getConsistencyStats(weeks = 12) {
+    return this.request<{
+      scheduledPerWeek: number;
+      weeks: {
+        week: string;
+        completed: number;
+        scheduled: number;
+        consistency: number;
+      }[];
+    }>(`/api/stats/consistency?weeks=${weeks}`);
+  }
+
+  async getStrengthStats(exerciseId?: number, weeks = 12) {
+    const params = new URLSearchParams({ weeks: weeks.toString() });
+    if (exerciseId) params.set('exercise_id', exerciseId.toString());
+    return this.request<
+      | {
+          exercise_id: number;
+          exercise_name: string;
+          data: { date: string; max_weight: number; max_volume: number }[];
+        }
+      | {
+          exercises: {
+            exercise_id: number;
+            exercise_name: string;
+            muscle_group: string;
+            max_weight: number;
+            workout_count: number;
+          }[];
+        }
+    >(`/api/stats/strength?${params}`);
+  }
+
+  async getStrengthTrend(weeks = 12) {
+    return this.request<{
+      weeks: {
+        week: string;
+        totalVolume: number;
+        workouts: number;
+        avgVolumePerWorkout: number;
+      }[];
+    }>(`/api/stats/strength-trend?weeks=${weeks}`);
+  }
+
   // Home data
   async getHomeData(dayOfWeek: number) {
     return this.request<{
