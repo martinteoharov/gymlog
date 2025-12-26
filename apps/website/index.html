@@ -1,0 +1,872 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>OpenRep - Track every lift. Own your data.</title>
+        <meta
+            name="description"
+            content="Every exercise. Smart weight progression. Works offline. No account needed. The workout tracker for lifters who just want to track their lifts."
+        />
+        <meta
+            name="keywords"
+            content="workout tracker, gym app, exercise log, weight training, progressive overload, offline workout app"
+        />
+
+        <!-- Open Graph -->
+        <meta
+            property="og:title"
+            content="OpenRep - Track every lift. Own your data."
+        />
+        <meta
+            property="og:description"
+            content="Every exercise. Smart weight progression. Works offline. No account needed."
+        />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://openrep.app/about" />
+
+        <!-- Twitter Card -->
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta
+            name="twitter:title"
+            content="OpenRep - Track every lift. Own your data."
+        />
+        <meta
+            name="twitter:description"
+            content="Every exercise. Smart weight progression. Works offline. No account needed."
+        />
+
+        <link rel="canonical" href="https://openrep.app/about" />
+
+        <style>
+            :root {
+                --bg-primary: #1c1c1e;
+                --bg-secondary: #2c2c2e;
+                --bg-tertiary: #3a3a3c;
+                --accent: #e2f163;
+                --accent-dark: #c9d856;
+                --text-primary: #ffffff;
+                --text-secondary: #8e8e93;
+                --text-muted: #636366;
+                --success: #30d158;
+                --border-radius: 16px;
+                --border-radius-sm: 8px;
+            }
+
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            html {
+                scroll-behavior: smooth;
+            }
+
+            body {
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                    sans-serif;
+                background: var(--bg-primary);
+                color: var(--text-primary);
+                line-height: 1.6;
+            }
+
+            /* Layout */
+            .container {
+                max-width: 1100px;
+                margin: 0 auto;
+                padding: 0 24px;
+            }
+
+            .container--narrow {
+                max-width: 800px;
+            }
+
+            /* Navigation */
+            nav {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 100;
+                background: rgba(28, 28, 30, 0.85);
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
+                border-bottom: 1px solid var(--bg-secondary);
+            }
+
+            nav .container {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                height: 64px;
+            }
+
+            .logo {
+                font-size: 20px;
+                font-weight: 700;
+                color: var(--text-primary);
+                text-decoration: none;
+            }
+
+            .logo span {
+                color: var(--accent);
+            }
+
+            .nav-links {
+                display: flex;
+                align-items: center;
+                gap: 32px;
+            }
+
+            .nav-links a {
+                color: var(--text-secondary);
+                text-decoration: none;
+                font-size: 15px;
+                font-weight: 500;
+                transition: color 0.2s;
+            }
+
+            .nav-links a:hover {
+                color: var(--text-primary);
+            }
+
+            .nav-cta {
+                background: var(--accent);
+                color: var(--bg-primary) !important;
+                padding: 10px 20px;
+                border-radius: var(--border-radius-sm);
+                font-weight: 600 !important;
+            }
+
+            .nav-cta:hover {
+                background: var(--accent-dark);
+            }
+
+            /* Hero */
+            .hero {
+                padding: 160px 0 100px;
+                text-align: center;
+            }
+
+            .hero-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                background: var(--bg-secondary);
+                padding: 8px 16px;
+                border-radius: 100px;
+                font-size: 14px;
+                color: var(--text-secondary);
+                margin-bottom: 32px;
+            }
+
+            .hero-badge span {
+                color: var(--accent);
+                font-weight: 600;
+            }
+
+            .hero h1 {
+                font-size: 56px;
+                font-weight: 800;
+                margin-bottom: 24px;
+                line-height: 1.1;
+                letter-spacing: -0.02em;
+            }
+
+            .hero h1 .highlight {
+                color: var(--accent);
+            }
+
+            .hero .tagline {
+                font-size: 20px;
+                color: var(--text-secondary);
+                margin-bottom: 48px;
+                max-width: 560px;
+                margin-left: auto;
+                margin-right: auto;
+            }
+
+            .hero-buttons {
+                display: flex;
+                gap: 16px;
+                justify-content: center;
+                flex-wrap: wrap;
+            }
+
+            .btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 16px 32px;
+                font-size: 16px;
+                font-weight: 600;
+                text-decoration: none;
+                border-radius: var(--border-radius);
+                transition: all 0.2s ease;
+                border: none;
+                cursor: pointer;
+            }
+
+            .btn-primary {
+                background: var(--accent);
+                color: var(--bg-primary);
+            }
+
+            .btn-primary:hover {
+                background: var(--accent-dark);
+                transform: translateY(-2px);
+            }
+
+            .btn-secondary {
+                background: var(--bg-secondary);
+                color: var(--text-primary);
+            }
+
+            .btn-secondary:hover {
+                background: var(--bg-tertiary);
+            }
+
+            /* Features Section */
+            .features {
+                padding: 100px 0;
+            }
+
+            .section-header {
+                text-align: center;
+                margin-bottom: 64px;
+            }
+
+            .section-label {
+                display: inline-block;
+                font-size: 13px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.1em;
+                color: var(--accent);
+                margin-bottom: 16px;
+            }
+
+            .section-header h2 {
+                font-size: 40px;
+                font-weight: 700;
+                margin-bottom: 16px;
+                letter-spacing: -0.02em;
+            }
+
+            .section-header p {
+                font-size: 18px;
+                color: var(--text-secondary);
+                max-width: 480px;
+                margin: 0 auto;
+            }
+
+            .features-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 24px;
+            }
+
+            .feature-card {
+                background: var(--bg-secondary);
+                padding: 32px;
+                border-radius: var(--border-radius);
+                transition:
+                    transform 0.2s,
+                    background 0.2s;
+            }
+
+            .feature-card:hover {
+                transform: translateY(-4px);
+                background: var(--bg-tertiary);
+            }
+
+            .feature-icon {
+                width: 48px;
+                height: 48px;
+                background: var(--bg-tertiary);
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-bottom: 20px;
+                font-size: 24px;
+            }
+
+            .feature-card h3 {
+                font-size: 18px;
+                font-weight: 600;
+                margin-bottom: 12px;
+                color: var(--text-primary);
+            }
+
+            .feature-card p {
+                color: var(--text-secondary);
+                font-size: 15px;
+                line-height: 1.6;
+            }
+
+            .feature-link {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                margin-top: 16px;
+                color: var(--accent);
+                text-decoration: none;
+                font-weight: 500;
+                font-size: 14px;
+            }
+
+            .feature-link:hover {
+                text-decoration: underline;
+            }
+
+            /* Pricing Section */
+            .pricing {
+                padding: 100px 0;
+                background: var(--bg-secondary);
+            }
+
+            .pricing-cards {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 32px;
+                max-width: 900px;
+                margin: 0 auto;
+            }
+
+            .pricing-card {
+                background: var(--bg-primary);
+                border-radius: var(--border-radius);
+                padding: 40px;
+                position: relative;
+            }
+
+            .pricing-card.featured {
+                border: 2px solid var(--accent);
+            }
+
+            .pricing-card.featured::before {
+                content: "Most Popular";
+                position: absolute;
+                top: -12px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: var(--accent);
+                color: var(--bg-primary);
+                font-size: 12px;
+                font-weight: 600;
+                padding: 4px 16px;
+                border-radius: 100px;
+            }
+
+            .pricing-card h3 {
+                font-size: 24px;
+                font-weight: 700;
+                margin-bottom: 8px;
+                color: var(--text-primary);
+            }
+
+            .pricing-card .price {
+                font-size: 48px;
+                font-weight: 800;
+                color: var(--text-primary);
+                margin-bottom: 8px;
+            }
+
+            .pricing-card .price span {
+                font-size: 16px;
+                font-weight: 500;
+                color: var(--text-secondary);
+            }
+
+            .pricing-card .price-note {
+                font-size: 14px;
+                color: var(--text-secondary);
+                margin-bottom: 32px;
+            }
+
+            .pricing-features {
+                list-style: none;
+                margin-bottom: 32px;
+            }
+
+            .pricing-features li {
+                display: flex;
+                align-items: flex-start;
+                gap: 12px;
+                padding: 12px 0;
+                border-bottom: 1px solid var(--bg-secondary);
+                font-size: 15px;
+                color: var(--text-primary);
+            }
+
+            .pricing-features li:last-child {
+                border-bottom: none;
+            }
+
+            .pricing-features .check {
+                color: var(--success);
+                font-size: 16px;
+                flex-shrink: 0;
+                margin-top: 2px;
+            }
+
+            .pricing-features .dash {
+                color: var(--text-muted);
+                font-size: 16px;
+                flex-shrink: 0;
+                margin-top: 2px;
+            }
+
+            .pricing-features .muted {
+                color: var(--text-muted);
+            }
+
+            .pricing-card .btn {
+                width: 100%;
+                justify-content: center;
+            }
+
+            /* Open Source Section */
+            .open-source {
+                padding: 100px 0;
+            }
+
+            .open-source-content {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 64px;
+                align-items: center;
+            }
+
+            .open-source-text h2 {
+                font-size: 40px;
+                font-weight: 700;
+                margin-bottom: 24px;
+                letter-spacing: -0.02em;
+            }
+
+            .open-source-text p {
+                font-size: 18px;
+                color: var(--text-secondary);
+                margin-bottom: 32px;
+                line-height: 1.7;
+            }
+
+            .open-source-visual {
+                background: var(--bg-secondary);
+                border-radius: var(--border-radius);
+                padding: 32px;
+            }
+
+            .code-block {
+                background: var(--bg-primary);
+                border-radius: var(--border-radius-sm);
+                padding: 24px;
+                font-family: "SF Mono", Monaco, "Courier New", monospace;
+                font-size: 14px;
+                line-height: 1.8;
+                overflow-x: auto;
+            }
+
+            .code-block .comment {
+                color: var(--text-muted);
+            }
+
+            .code-block .command {
+                color: var(--accent);
+            }
+
+            /* Footer */
+            footer {
+                padding: 64px 0;
+                border-top: 1px solid var(--bg-secondary);
+            }
+
+            .footer-content {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .footer-left p {
+                color: var(--text-secondary);
+                font-size: 15px;
+            }
+
+            .footer-links {
+                display: flex;
+                gap: 32px;
+            }
+
+            .footer-links a {
+                color: var(--text-secondary);
+                text-decoration: none;
+                font-size: 15px;
+                transition: color 0.2s;
+            }
+
+            .footer-links a:hover {
+                color: var(--accent);
+            }
+
+            /* Responsive */
+            @media (max-width: 900px) {
+                .features-grid {
+                    grid-template-columns: repeat(2, 1fr);
+                }
+
+                .pricing-cards {
+                    grid-template-columns: 1fr;
+                    max-width: 480px;
+                }
+
+                .open-source-content {
+                    grid-template-columns: 1fr;
+                    gap: 48px;
+                }
+
+                .hero h1 {
+                    font-size: 44px;
+                }
+            }
+
+            @media (max-width: 600px) {
+                nav .nav-links a:not(.nav-cta) {
+                    display: none;
+                }
+
+                .hero {
+                    padding: 120px 0 80px;
+                }
+
+                .hero h1 {
+                    font-size: 36px;
+                }
+
+                .hero .tagline {
+                    font-size: 17px;
+                }
+
+                .hero-buttons {
+                    flex-direction: column;
+                    align-items: stretch;
+                }
+
+                .hero-buttons .btn {
+                    justify-content: center;
+                }
+
+                .section-header h2 {
+                    font-size: 32px;
+                }
+
+                .features-grid {
+                    grid-template-columns: 1fr;
+                }
+
+                .features,
+                .pricing,
+                .open-source {
+                    padding: 64px 0;
+                }
+
+                .pricing-card {
+                    padding: 32px 24px;
+                }
+
+                .open-source-text h2 {
+                    font-size: 32px;
+                }
+
+                .footer-content {
+                    flex-direction: column;
+                    gap: 24px;
+                    text-align: center;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <!-- Navigation -->
+        <nav>
+            <div class="container">
+                <a href="/" class="logo">Open<span>Rep</span></a>
+                <div class="nav-links">
+                    <a href="#features">Features</a>
+                    <a href="#pricing">Pricing</a>
+                    <a href="https://github.com/martinteoharov/openrepapp"
+                        >GitHub</a
+                    >
+                    <a href="https://openrep.app" class="nav-cta">Open App</a>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Hero -->
+        <header class="hero">
+            <div class="container">
+                <div class="hero-badge">
+                    <span>New</span> Now with cloud sync
+                </div>
+                <h1>
+                    Track every lift.<br /><span class="highlight"
+                        >Own your data.</span
+                    >
+                </h1>
+                <p class="tagline">
+                    The workout tracker for lifters who just want to lift. Works
+                    offline, no account needed, open source.
+                </p>
+                <div class="hero-buttons">
+                    <a href="https://openrep.app" class="btn btn-primary"
+                        >Start Tracking Free</a
+                    >
+                    <a href="#features" class="btn btn-secondary"
+                        >See Features</a
+                    >
+                </div>
+            </div>
+        </header>
+
+        <!-- Features -->
+        <section class="features" id="features">
+            <div class="container">
+                <div class="section-header">
+                    <span class="section-label">Features</span>
+                    <h2>Everything you need, nothing you don't</h2>
+                    <p>
+                        Built by lifters, for lifters. No bloat, no
+                        subscriptions, no BS.
+                    </p>
+                </div>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">&#128170;</div>
+                        <h3>Every Exercise</h3>
+                        <p>
+                            Thousands of exercises - mainstream, niche, that
+                            weird machine only your gym has. Can't find one? Add
+                            your own.
+                        </p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">&#128268;</div>
+                        <h3>Works Offline</h3>
+                        <p>
+                            Open the app and start logging. No account needed.
+                            Data stays on your device until you want to sync.
+                        </p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">&#128200;</div>
+                        <h3>Smart Progression</h3>
+                        <p>
+                            Set your increments (2.5kg, 5lb, microplates) and
+                            get smart weight suggestions. Progressive overload
+                            without the mental math.
+                        </p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">&#128241;</div>
+                        <h3>Runs Everywhere</h3>
+                        <p>
+                            iOS, Android, or any mobile browser. One app that
+                            works on all your devices.
+                        </p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">&#128190;</div>
+                        <h3>Your Data, Yours</h3>
+                        <p>
+                            Export anytime. No lock-in. Your workout history
+                            belongs to you, not us.
+                        </p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">&#128187;</div>
+                        <h3>Open Source</h3>
+                        <p>Fully transparent. Run it yourself if you want.</p>
+                        <a
+                            href="https://github.com/martinteoharov/openrepapp"
+                            class="feature-link"
+                            >View on GitHub &#8594;</a
+                        >
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Pricing -->
+        <section class="pricing" id="pricing">
+            <div class="container">
+                <div class="section-header">
+                    <span class="section-label">Pricing</span>
+                    <h2>Simple, honest pricing</h2>
+                    <p>
+                        No subscriptions. No hidden fees. Pay once, own forever.
+                    </p>
+                </div>
+                <div class="pricing-cards">
+                    <div class="pricing-card">
+                        <h3>Free</h3>
+                        <div class="price">$0</div>
+                        <p class="price-note">Free forever</p>
+                        <ul class="pricing-features">
+                            <li>
+                                <span class="check">&#10003;</span> Full
+                                exercise database
+                            </li>
+                            <li>
+                                <span class="check">&#10003;</span> Unlimited
+                                workouts
+                            </li>
+                            <li>
+                                <span class="check">&#10003;</span> Unlimited
+                                templates
+                            </li>
+                            <li>
+                                <span class="check">&#10003;</span> Offline mode
+                            </li>
+                            <li>
+                                <span class="check">&#10003;</span> Weight
+                                suggestions
+                            </li>
+                            <li>
+                                <span class="check">&#10003;</span> Basic stats
+                            </li>
+                            <li>
+                                <span class="dash">&#8212;</span>
+                                <span class="muted">Pre-built programs</span>
+                            </li>
+                            <li>
+                                <span class="dash">&#8212;</span>
+                                <span class="muted">Advanced progression</span>
+                            </li>
+                            <li>
+                                <span class="dash">&#8212;</span>
+                                <span class="muted">Detailed analytics</span>
+                            </li>
+                            <li>
+                                <span class="dash">&#8212;</span>
+                                <span class="muted">Cloud sync</span>
+                            </li>
+                        </ul>
+                        <a href="https://openrep.app" class="btn btn-secondary"
+                            >Get Started</a
+                        >
+                    </div>
+                    <div class="pricing-card featured">
+                        <h3>Premium</h3>
+                        <div class="price">$9.99 <span>one-time</span></div>
+                        <p class="price-note">Pay once, own forever</p>
+                        <ul class="pricing-features">
+                            <li>
+                                <span class="check">&#10003;</span> Everything
+                                in Free
+                            </li>
+                            <li>
+                                <span class="check">&#10003;</span> Pre-built
+                                programs
+                            </li>
+                            <li>
+                                <span class="check">&#10003;</span> Smart
+                                goal-based progression
+                            </li>
+                            <li>
+                                <span class="check">&#10003;</span> Detailed
+                                analytics
+                            </li>
+                            <li>
+                                <span class="check">&#10003;</span> Consistency
+                                tracking
+                            </li>
+                            <li>
+                                <span class="check">&#10003;</span> Per-exercise
+                                progress
+                            </li>
+                            <li>
+                                <span class="check">&#10003;</span> Weak point
+                                analysis
+                            </li>
+                            <li>
+                                <span class="check">&#10003;</span> Cloud sync
+                            </li>
+                            <li>
+                                <span class="check">&#10003;</span> All future
+                                updates
+                            </li>
+                            <li>
+                                <span class="check">&#10003;</span> Priority
+                                support
+                            </li>
+                        </ul>
+                        <a
+                            href="https://openrep.app/premium"
+                            class="btn btn-primary"
+                            >Get Premium</a
+                        >
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Open Source -->
+        <section class="open-source">
+            <div class="container">
+                <div class="open-source-content">
+                    <div class="open-source-text">
+                        <h2>Open source, self-hostable</h2>
+                        <p>
+                            Don't trust us with your data? Run OpenRep yourself.
+                            The entire codebase is open source and available on
+                            GitHub. Deploy it on your own server and have
+                            complete control.
+                        </p>
+                        <a
+                            href="https://github.com/martinteoharov/openrepapp"
+                            class="btn btn-secondary"
+                            >View on GitHub</a
+                        >
+                    </div>
+                    <div class="open-source-visual">
+                        <div class="code-block">
+                            <span class="comment"># Clone the repository</span
+                            ><br />
+                            <span class="command">git clone</span>
+                            github.com/martinteoharov/openrepapp<br /><br />
+                            <span class="comment"># Install dependencies</span
+                            ><br />
+                            <span class="command">npm install</span><br /><br />
+                            <span class="comment"># Start the app</span><br />
+                            <span class="command">npm run dev</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer>
+            <div class="container">
+                <div class="footer-content">
+                    <div class="footer-left">
+                        <p>
+                            Built for lifters who just want to track their
+                            lifts.
+                        </p>
+                    </div>
+                    <div class="footer-links">
+                        <a href="https://github.com/martinteoharov/openrepapp"
+                            >GitHub</a
+                        >
+                        <a href="https://openrep.app">App</a>
+                        <a href="mailto:hello@openrep.app">Contact</a>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </body>
+</html>
