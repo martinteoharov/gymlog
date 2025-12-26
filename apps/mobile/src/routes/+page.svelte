@@ -15,11 +15,13 @@
 		hasWorkout: boolean;
 	}
 
-	interface RecentWorkout {
+	interface WorkoutHistory {
 		id: number;
+		template_id: number | null;
 		template_name: string;
 		started_at: string;
 		completed_at: string;
+		duration_minutes: number;
 	}
 
 	let calendarDays: CalendarDay[] = [];
@@ -27,7 +29,7 @@
 	let exerciseList = '';
 	let totalWorkouts = 0;
 	let thisWeekWorkouts = 0;
-	let recentWorkouts: RecentWorkout[] = [];
+	let workoutHistory: WorkoutHistory[] = [];
 	let activeWorkout: { template_id: number; template_name: string } | null = null;
 	let loading = true;
 
@@ -45,10 +47,10 @@
 			const todayDow = today.getDay();
 
 			// Load data in parallel where possible
-			const [schedules, stats, recent, activeState] = await Promise.all([
+			const [schedules, stats, history, activeState] = await Promise.all([
 				db.schedule.where('user_id').equals(userId).toArray(),
 				getWorkoutStats(userId),
-				getRecentWorkouts(userId, 5),
+				getRecentWorkouts(userId), // No limit - get full history
 				getActiveWorkout()
 			]);
 
@@ -59,7 +61,7 @@
 			// Set stats
 			totalWorkouts = stats.total;
 			thisWeekWorkouts = stats.thisWeek;
-			recentWorkouts = recent;
+			workoutHistory = history;
 
 			// Get today's schedule
 			const todaySched = schedules.find(s => s.day_of_week === todayDow && s.template_id);
@@ -122,6 +124,26 @@
 			goto(`/workouts/${activeWorkout.template_id}/active`);
 		}
 	}
+
+	function viewWorkout(workout: WorkoutHistory) {
+		if (workout.template_id) {
+			goto(`/workouts/${workout.template_id}/active`);
+		}
+	}
+
+	function formatTime(dateStr: string): string {
+		const date = new Date(dateStr);
+		return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+	}
+
+	function formatDuration(minutes: number): string {
+		if (minutes < 60) {
+			return `${minutes}m`;
+		}
+		const hours = Math.floor(minutes / 60);
+		const mins = minutes % 60;
+		return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+	}
 </script>
 
 <div class="page">
@@ -176,20 +198,31 @@
 			<StatCard value={thisWeekWorkouts} label="This Week" />
 		</div>
 
-		<!-- Recent Workouts -->
-		{#if recentWorkouts.length > 0}
-			<h2 class="section-title">Recent Activity</h2>
-			{#each recentWorkouts as workout}
+		<!-- Workout History -->
+		{#if workoutHistory.length > 0}
+			<h2 class="section-title">Workout History</h2>
+			{#each workoutHistory as workout}
 				{@const formatted = formatWorkoutDate(workout.started_at)}
-				<div class="recent-workout">
+				<div
+					class="recent-workout"
+					on:click={() => viewWorkout(workout)}
+					on:keydown={(e) => e.key === 'Enter' && viewWorkout(workout)}
+					role="button"
+					tabindex="0"
+				>
 					<div class="recent-workout-date">
 						<span class="recent-workout-day">{formatted.day}</span>
 						<span class="recent-workout-num">{formatted.num}</span>
 					</div>
 					<div class="recent-workout-info">
 						<div class="recent-workout-name">{workout.template_name || 'Workout'}</div>
-						<div class="recent-workout-meta">Completed</div>
+						<div class="recent-workout-meta">
+							{formatTime(workout.started_at)} · {formatDuration(workout.duration_minutes)}
+						</div>
 					</div>
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-muted);">
+						<polyline points="9 18 15 12 9 6"></polyline>
+					</svg>
 				</div>
 			{/each}
 		{/if}

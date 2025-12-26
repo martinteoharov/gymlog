@@ -253,14 +253,18 @@ export async function getWorkoutStats(userId: number): Promise<WorkoutStats> {
  */
 export async function getRecentWorkouts(
 	userId: number,
-	limit: number = 5
-): Promise<Array<{ id: number; template_name: string; started_at: string; completed_at: string }>> {
+	limit?: number
+): Promise<Array<{ id: number; template_id: number | null; template_name: string; started_at: string; completed_at: string; duration_minutes: number }>> {
 	const workouts = await getCompletedWorkouts(userId);
 
-	// Sort by completed_at descending and take limit
-	const recent = workouts
-		.sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime())
-		.slice(0, limit);
+	// Sort by completed_at descending
+	let recent = workouts
+		.sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime());
+
+	// Apply limit if specified
+	if (limit !== undefined) {
+		recent = recent.slice(0, limit);
+	}
 
 	// Get template names
 	const templateIds = [...new Set(recent.map(w => w.template_id).filter(Boolean))] as number[];
@@ -269,12 +273,20 @@ export async function getRecentWorkouts(
 		: [];
 	const templateMap = new Map(templates.map(t => [t.id, t.name]));
 
-	return recent.map(w => ({
-		id: w.id,
-		template_name: w.template_id ? templateMap.get(w.template_id) || 'Workout' : 'Workout',
-		started_at: w.started_at,
-		completed_at: w.completed_at!
-	}));
+	return recent.map(w => {
+		const startTime = new Date(w.started_at).getTime();
+		const endTime = new Date(w.completed_at!).getTime();
+		const durationMinutes = Math.round((endTime - startTime) / 60000);
+
+		return {
+			id: w.id,
+			template_id: w.template_id,
+			template_name: w.template_id ? templateMap.get(w.template_id) || 'Workout' : 'Workout',
+			started_at: w.started_at,
+			completed_at: w.completed_at!,
+			duration_minutes: durationMinutes
+		};
+	});
 }
 
 /**

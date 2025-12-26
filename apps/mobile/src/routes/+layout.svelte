@@ -5,14 +5,16 @@
 	import { user, authLoading, checkAuth } from '$lib/stores/auth';
 	import { initSync } from '$lib/stores/sync';
 	import Toast from '$lib/components/Toast.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import ActiveWorkoutBanner from '$lib/components/ActiveWorkoutBanner.svelte';
 
 	$: currentPath = $page.url.pathname;
 
 	// Reactive active states
 	$: homeActive = currentPath === '/';
 	$: workoutsActive = currentPath === '/workouts' || currentPath.startsWith('/workouts/');
-	$: statsActive = currentPath === '/stats';
-	$: accountActive = currentPath === '/account';
+	$: statsActive = currentPath === '/stats' || currentPath.startsWith('/stats/');
+	$: accountActive = currentPath === '/account' || currentPath.startsWith('/account/');
 
 	onMount(async () => {
 		await checkAuth();
@@ -36,9 +38,13 @@
 {:else}
 	<div class="app">
 		<main id="content" class="content">
+			{#if currentPath !== '/login'}
+				<ActiveWorkoutBanner />
+			{/if}
 			<slot />
 		</main>
 		<Toast />
+		<ConfirmDialog />
 
 		{#if currentPath !== '/login'}
 			<nav class="navbar">

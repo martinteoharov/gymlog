@@ -6,6 +6,7 @@
 	import { user } from '$lib/stores/auth';
 	import { createWorkoutLocal, completeWorkoutLocal } from '$lib/stores/sync';
 	import { toasts } from '$lib/stores/toast';
+	import { confirmDialog } from '$lib/stores/confirm';
 	import ExerciseModal from '$lib/components/ExerciseModal.svelte';
 	import LoadingState from '$lib/components/LoadingState.svelte';
 
@@ -27,12 +28,13 @@
 	let templateName = '';
 	let restTimeSeconds = 180;
 	let exercises: ExerciseState[] = [];
-	let exerciseMap: Map<number, ExerciseState> = new Map();
 	let loading = true;
 	let workoutId: number | null = null;
+	let activeWorkoutId: number | undefined = undefined; // Dexie record ID for updates
+	let startedAt: number = Date.now(); // Preserve original start time
 	let modalOpen = false;
 
-	// Timer state
+	// Rest timer state
 	let timerRunning = false;
 	let timerSeconds = 0;
 	let timerInterval: ReturnType<typeof setInterval> | null = null;
@@ -40,17 +42,44 @@
 
 	$: timerWarning = timerRunning && timerSeconds < 0;
 
+	// Workout duration timer
+	let workoutDuration = 0;
+	let durationInterval: ReturnType<typeof setInterval> | null = null;
+
 	// Audio context for beep
 	let audioContext: AudioContext | null = null;
 	let hasPlayedBeep = false;
 
 	onMount(async () => {
 		await loadWorkoutData();
+		startDurationTimer();
 	});
 
 	onDestroy(() => {
 		if (timerInterval) clearInterval(timerInterval);
+		if (durationInterval) clearInterval(durationInterval);
 	});
+
+	function startDurationTimer() {
+		// Update duration every second
+		updateDuration();
+		durationInterval = setInterval(updateDuration, 1000);
+	}
+
+	function updateDuration() {
+		workoutDuration = Math.floor((Date.now() - startedAt) / 1000);
+	}
+
+	function formatWorkoutDuration(seconds: number): string {
+		const hours = Math.floor(seconds / 3600);
+		const mins = Math.floor((seconds % 3600) / 60);
+		const secs = seconds % 60;
+
+		if (hours > 0) {
+			return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+		}
+		return `${mins}:${secs.toString().padStart(2, '0')}`;
+	}
 
 	async function loadWorkoutData() {
 		loading = true;
@@ -113,11 +142,12 @@
 			}
 
 			exercises = exerciseStates;
-			rebuildExerciseMap();
 
 			// Restore state from existing active workout or create new
 			if (existingState) {
+				activeWorkoutId = existingState.id;
 				workoutId = existingState.workout_id;
+				startedAt = existingState.startedAt;
 				restoreState(existingState);
 			} else {
 				// Create new workout record
@@ -132,15 +162,11 @@
 		}
 	}
 
-	function rebuildExerciseMap() {
-		exerciseMap = new Map(exercises.map(e => [e.exercise_id, e]));
-	}
-
 	function restoreState(saved: ActiveWorkoutState) {
-		// Restore input values
-		for (const [exIdStr, setsData] of Object.entries(saved.inputs || {})) {
-			const exId = parseInt(exIdStr);
-			const ex = exerciseMap.get(exId);
+		// Restore input values - using exercise index as key
+		for (const [exIndexStr, setsData] of Object.entries(saved.inputs || {})) {
+			const exIndex = parseInt(exIndexStr);
+			const ex = exercises[exIndex];
 			if (ex && typeof setsData === 'object') {
 				for (const [setIdxStr, values] of Object.entries(setsData)) {
 					const setIdx = parseInt(setIdxStr);
@@ -156,9 +182,9 @@
 		for (const selector of saved.completedSets || []) {
 			const match = selector.match(/ex-(\d+)-set-(\d+)/);
 			if (match) {
-				const exId = parseInt(match[1]);
+				const exIndex = parseInt(match[1]);
 				const setIdx = parseInt(match[2]);
-				const ex = exerciseMap.get(exId);
+				const ex = exercises[exIndex];
 				if (ex?.sets[setIdx]) {
 					ex.sets[setIdx].completed = true;
 				}
@@ -178,31 +204,42 @@
 		exercises = [...exercises]; // Trigger reactivity
 	}
 
-	// Save progress to Dexie
+	// Save progress to Dexie - using exercise index as key
 	async function saveProgress() {
 		const inputs: Record<string, Record<string, { reps: number; weight: number }>> = {};
 		const completedSets: string[] = [];
 
-		for (const ex of exercises) {
-			inputs[ex.exercise_id] = {};
-			ex.sets.forEach((set, idx) => {
-				inputs[ex.exercise_id][idx] = { reps: set.reps, weight: set.weight };
+		exercises.forEach((ex, exIndex) => {
+			inputs[exIndex] = {};
+			ex.sets.forEach((set, setIdx) => {
+				inputs[exIndex][setIdx] = { reps: set.reps, weight: set.weight };
 				if (set.completed) {
-					completedSets.push(`ex-${ex.exercise_id}-set-${idx}`);
+					completedSets.push(`ex-${exIndex}-set-${setIdx}`);
 				}
 			});
-		}
+		});
 
-		await db.activeWorkout.put({
+		const record: ActiveWorkoutState = {
 			template_id: templateId,
 			workout_id: workoutId,
 			inputs,
 			completedSets,
 			addedSets: {},
 			timerEndTime,
-			startedAt: Date.now(),
+			startedAt,
 			updated_at: Date.now()
-		});
+		};
+
+		// Include id if we have one (for updates), otherwise let Dexie auto-generate
+		if (activeWorkoutId !== undefined) {
+			record.id = activeWorkoutId;
+		}
+
+		const newId = await db.activeWorkout.put(record);
+		// Store the ID for subsequent saves
+		if (activeWorkoutId === undefined) {
+			activeWorkoutId = newId;
+		}
 	}
 
 	// Timer functions
@@ -280,19 +317,19 @@
 	}
 
 	// Check if all sets for an exercise are completed
-	function areAllSetsCompleted(exerciseId: number): boolean {
-		const ex = exerciseMap.get(exerciseId);
+	function areAllSetsCompleted(exIndex: number): boolean {
+		const ex = exercises[exIndex];
 		if (!ex) return false;
 		return ex.sets.every(s => s.completed);
 	}
 
 	// Apply auto-increment to an exercise
-	function applyAutoIncrement(exerciseId: number) {
-		const ex = exerciseMap.get(exerciseId);
+	function applyAutoIncrement(exIndex: number) {
+		const ex = exercises[exIndex];
 		if (!ex) return;
 
-		exercises = exercises.map(e => {
-			if (e.exercise_id === exerciseId) {
+		exercises = exercises.map((e, i) => {
+			if (i === exIndex) {
 				return {
 					...e,
 					sets: e.sets.map(set => ({
@@ -303,13 +340,12 @@
 			}
 			return e;
 		});
-		rebuildExerciseMap();
 		toasts.success(`Weight increased by ${ex.increment}kg for next time`);
 	}
 
 	// Set completion
-	function toggleSetComplete(exerciseId: number, setIndex: number) {
-		const ex = exerciseMap.get(exerciseId);
+	async function toggleSetComplete(exIndex: number, setIndex: number) {
+		const ex = exercises[exIndex];
 		if (!ex) return;
 
 		const wasCompleted = ex.sets[setIndex].completed;
@@ -317,7 +353,6 @@
 
 		// Trigger reactivity
 		exercises = [...exercises];
-		rebuildExerciseMap();
 
 		if (!wasCompleted) {
 			// Set was just completed - restart timer
@@ -325,13 +360,17 @@
 			startTimer();
 
 			// Check if all sets for this exercise are now completed
-			if (areAllSetsCompleted(exerciseId)) {
+			if (areAllSetsCompleted(exIndex)) {
 				// Offer to apply auto-increment
-				setTimeout(() => {
-					if (confirm(`All sets completed! Increase weight by ${ex.increment}kg for next workout?`)) {
-						applyAutoIncrement(exerciseId);
-					}
-				}, 500);
+				const shouldIncrement = await confirmDialog.confirm({
+					title: 'All Sets Completed!',
+					message: `Increase weight by ${ex.increment}kg for next workout?`,
+					confirmText: 'Yes, Increase',
+					cancelText: 'No Thanks'
+				});
+				if (shouldIncrement) {
+					applyAutoIncrement(exIndex);
+				}
 			}
 		}
 
@@ -339,8 +378,8 @@
 	}
 
 	// Input adjustment
-	function adjustInput(exerciseId: number, setIndex: number, field: 'reps' | 'weight', delta: number) {
-		const ex = exerciseMap.get(exerciseId);
+	function adjustInput(exIndex: number, setIndex: number, field: 'reps' | 'weight', delta: number) {
+		const ex = exercises[exIndex];
 		if (!ex) return;
 
 		if (field === 'reps') {
@@ -350,17 +389,12 @@
 		}
 
 		exercises = [...exercises];
-		rebuildExerciseMap();
 		saveProgress();
 	}
 
 	// Add exercise from modal
 	function handleExerciseSelect(event: CustomEvent<{ id: number; name: string; muscle: string }>) {
 		const { id, name } = event.detail;
-		if (exerciseMap.has(id)) {
-			toasts.warning('Exercise already in workout');
-			return;
-		}
 
 		exercises = [
 			...exercises,
@@ -375,27 +409,32 @@
 				]
 			}
 		];
-		rebuildExerciseMap();
 		toasts.success(`Added ${name}`);
 		saveProgress();
 	}
 
 	// Add set to exercise
-	function addSetToExercise(exerciseId: number) {
-		const ex = exerciseMap.get(exerciseId);
+	function addSetToExercise(exIndex: number) {
+		const ex = exercises[exIndex];
 		if (!ex) return;
 
 		const lastSet = ex.sets[ex.sets.length - 1] || { reps: 10, weight: 20 };
 		ex.sets = [...ex.sets, { reps: lastSet.reps, weight: lastSet.weight, completed: false }];
 
 		exercises = [...exercises];
-		rebuildExerciseMap();
 		saveProgress();
 	}
 
 	// Cancel workout
 	async function cancelWorkout() {
-		if (!confirm('Are you sure you want to cancel this workout? Progress will be lost.')) return;
+		const confirmed = await confirmDialog.confirm({
+			title: 'Cancel Workout?',
+			message: 'Are you sure you want to cancel this workout? Progress will be lost.',
+			confirmText: 'Cancel Workout',
+			cancelText: 'Keep Going',
+			variant: 'danger'
+		});
+		if (!confirmed) return;
 
 		await db.activeWorkout.where('template_id').equals(templateId).delete();
 		toasts.info('Workout cancelled');
@@ -453,7 +492,10 @@
 						<line x1="6" y1="6" x2="18" y2="18"></line>
 					</svg>
 				</button>
-				<h1 class="page-title">{templateName}</h1>
+				<div>
+					<h1 class="page-title" style="margin-bottom: 2px;">{templateName}</h1>
+					<div class="workout-duration">{formatWorkoutDuration(workoutDuration)}</div>
+				</div>
 			</div>
 
 			<button
@@ -472,7 +514,7 @@
 		</div>
 
 		<!-- Exercises -->
-		{#each exercises as exercise (exercise.exercise_id)}
+		{#each exercises as exercise, exIndex (exIndex)}
 			<div class="card" style="margin-bottom: 16px;">
 				<div class="card-title">{exercise.exercise_name}</div>
 
@@ -481,26 +523,26 @@
 						<span class="set-number">Set {setIndex + 1}</span>
 
 						<div class="input-spinner">
-							<button type="button" class="spinner-btn" on:click={() => adjustInput(exercise.exercise_id, setIndex, 'reps', -1)}>−</button>
+							<button type="button" class="spinner-btn" on:click={() => adjustInput(exIndex, setIndex, 'reps', -1)}>−</button>
 							<input
 								type="number"
 								bind:value={set.reps}
 								on:change={() => saveProgress()}
 							/>
-							<button type="button" class="spinner-btn" on:click={() => adjustInput(exercise.exercise_id, setIndex, 'reps', 1)}>+</button>
+							<button type="button" class="spinner-btn" on:click={() => adjustInput(exIndex, setIndex, 'reps', 1)}>+</button>
 						</div>
 
 						<span class="set-unit">×</span>
 
 						<div class="input-spinner">
-							<button type="button" class="spinner-btn" on:click={() => adjustInput(exercise.exercise_id, setIndex, 'weight', -2.5)}>−</button>
+							<button type="button" class="spinner-btn" on:click={() => adjustInput(exIndex, setIndex, 'weight', -2.5)}>−</button>
 							<input
 								type="number"
 								step="0.5"
 								bind:value={set.weight}
 								on:change={() => saveProgress()}
 							/>
-							<button type="button" class="spinner-btn" on:click={() => adjustInput(exercise.exercise_id, setIndex, 'weight', 2.5)}>+</button>
+							<button type="button" class="spinner-btn" on:click={() => adjustInput(exIndex, setIndex, 'weight', 2.5)}>+</button>
 						</div>
 
 						<span class="set-unit">kg</span>
@@ -509,7 +551,7 @@
 							type="button"
 							class="set-check"
 							class:completed={set.completed}
-							on:click={() => toggleSetComplete(exercise.exercise_id, setIndex)}
+							on:click={() => toggleSetComplete(exIndex, setIndex)}
 						></button>
 					</div>
 				{/each}
@@ -517,7 +559,7 @@
 				<button
 					type="button"
 					class="add-set-btn"
-					on:click={() => addSetToExercise(exercise.exercise_id)}
+					on:click={() => addSetToExercise(exIndex)}
 				>
 					+ Add Set
 				</button>
@@ -525,7 +567,7 @@
 		{/each}
 
 		<!-- Add Exercise Button -->
-		<button type="button" class="btn btn-secondary btn-full" on:click={() => (modalOpen = true)} style="margin-bottom: 16px;">
+		<button type="button" class="btn btn-secondary btn-full" on:click={() => (modalOpen = true)} style="margin-bottom: 120px;">
 			+ Add Exercise
 		</button>
 

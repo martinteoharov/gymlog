@@ -5,6 +5,7 @@
 	import { user } from '$lib/stores/auth';
 	import { saveTemplateWithExercises, deleteTemplateWithExercises, validateTemplateData, type TemplateFormExercise } from '$lib/stores/sync';
 	import { toasts } from '$lib/stores/toast';
+	import { confirmDialog } from '$lib/stores/confirm';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import RestTimePicker from '$lib/components/RestTimePicker.svelte';
 	import DayToggle from '$lib/components/DayToggle.svelte';
@@ -219,7 +220,14 @@
 	}
 
 	async function handleDelete() {
-		if (!confirm('Are you sure you want to delete this template?')) return;
+		const confirmed = await confirmDialog.confirm({
+			title: 'Delete Template?',
+			message: 'Are you sure you want to delete this template? This cannot be undone.',
+			confirmText: 'Delete',
+			cancelText: 'Cancel',
+			variant: 'danger'
+		});
+		if (!confirmed) return;
 
 		deleting = true;
 		try {
